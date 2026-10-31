@@ -13,8 +13,8 @@ from quantro.config import config_manager
 class ShellTools:
     """Safely executes bash shell commands with configurable approval policies."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root.resolve()
+    def __init__(self, project_root: Any):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
 
     def run_bash(self, command: str, auto_approve: bool = False) -> Dict[str, Any]:
         """

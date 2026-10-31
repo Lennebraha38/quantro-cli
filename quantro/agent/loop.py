@@ -5,6 +5,7 @@ Orchestrates multi-turn ReAct loops, step timeline rendering, and session persis
 
 import json
 import re
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 import httpx
 
@@ -22,8 +23,9 @@ class AgentEngine:
     def __init__(self, session: Session, auto_approve: bool = False):
         self.session = session
         self.auto_approve = auto_approve
-        self.memory = MemoryManager(session.project_dir)
-        self.executor = ToolExecutor(session.project_dir, session=session)
+        self.project_path = Path(session.project_dir).resolve()
+        self.memory = MemoryManager(self.project_path)
+        self.executor = ToolExecutor(self.project_path, session=session)
 
     def _extract_thinking(self, content: str) -> tuple[str, str]:
         match = re.search(r"<think>(.*?)</think>", content, flags=re.DOTALL)

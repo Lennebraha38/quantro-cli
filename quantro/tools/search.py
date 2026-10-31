@@ -18,8 +18,8 @@ IGNORED_DIRECTORIES = {
 class SearchTools:
     """Provides high-performance repository tree scanning and pattern search."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root.resolve()
+    def __init__(self, project_root: Any):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
 
     def list_files(self, directory: str = ".", max_depth: int = 3) -> Dict[str, Any]:
         """Scans folder structure, filtering noise and build caches."""

@@ -14,8 +14,8 @@ from quantro.tools.search import SearchTools
 class ToolExecutor:
     """Central facade coordinating all sub-tool subsystems."""
 
-    def __init__(self, project_root: Optional[Path] = None, session=None):
-        self.project_root = (project_root or Path.cwd()).resolve()
+    def __init__(self, project_root: Optional[Any] = None, session=None):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
         self.session = session
         self.fs = FileSystemTools(self.project_root, session=session)
         self.shell = ShellTools(self.project_root)

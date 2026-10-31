@@ -34,8 +34,8 @@ FALLBACK_PRICING = {"input": 1.00, "output": 3.00}
 class MemoryManager:
     """Manages project memory, system prompts, token analytics, and context compacting."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root.resolve()
+    def __init__(self, project_root: Any):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
 
     def calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
         pricing = MODEL_PRICING.get(model, FALLBACK_PRICING)

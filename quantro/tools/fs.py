@@ -12,8 +12,8 @@ from typing import Dict, Any, Optional, List
 class FileSystemTools:
     """Manages secure file reading, atomic writing, and unified diff editing."""
 
-    def __init__(self, project_root: Path, session=None):
-        self.project_root = project_root.resolve()
+    def __init__(self, project_root: Any, session=None):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
         self.session = session
 
     def _resolve_path(self, path_str: str) -> Path:

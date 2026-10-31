@@ -21,8 +21,8 @@ class Skill:
 class SkillManager:
     """Discovers and parses local repository skills and global user skills."""
 
-    def __init__(self, project_root: Path):
-        self.project_root = project_root.resolve()
+    def __init__(self, project_root: Any):
+        self.project_root = (Path(project_root) if project_root else Path.cwd()).resolve()
         self.local_dir = self.project_root / ".quantro" / "skills"
         self.global_dir = SKILLS_GLOBAL_DIR
 
