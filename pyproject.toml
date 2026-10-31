@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantro"
-version = "1.0.0"
-description = "Quantro - Autonomous Terminal Coding & Software Engineering Agent"
+version = "2.0.0"
+description = "Quantro 2.0 - Autonomous Terminal Coding Agent (OpenCode 2.0 Architecture)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
@@ -24,8 +24,9 @@ keywords = [
     "autonomous",
     "developer-tools",
     "software-engineering",
-    "claude-code",
-    "opencode"
+    "opencode",
+    "opencode-2.0",
+    "claude-code"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",

@@ -1,6 +1,6 @@
 """
-Quantro Configuration Manager
-Handles provider endpoints, credentials, default models, and user preferences.
+Quantro 2.0 Configuration & Permissions System
+Manages provider credentials, model registry, tool permission policies, and system paths.
 """
 
 import os
@@ -10,6 +10,8 @@ from typing import Dict, Any, Optional, List
 
 CONFIG_DIR = Path.home() / ".quantro"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+SESSIONS_DIR = CONFIG_DIR / "sessions"
+SKILLS_GLOBAL_DIR = CONFIG_DIR / "skills"
 
 DEFAULT_PROVIDERS = {
     "openrouter": {
@@ -62,26 +64,37 @@ DEFAULT_PROVIDERS = {
 }
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    "version": "2.0.0",
     "active_provider": "openrouter",
     "active_model": "deepseek/deepseek-chat",
+    "active_agent": "build",
+    "permissions": {
+        "bash": "ask",          # "ask" | "allow" | "deny"
+        "file_write": "allow",
+        "file_edit": "allow",
+        "file_read": "allow"
+    },
     "providers": {
         "openrouter": {"api_key": ""},
         "gemini": {"api_key": ""},
         "deepseek": {"api_key": ""},
         "openai": {"api_key": ""}
     },
-    "auto_approve_bash": False,
     "max_tokens": 4096,
     "temperature": 0.2
 }
 
 
 class ConfigManager:
-    """Manages ~/.quantro/config.json with environment variable fallbacks."""
+    """Handles ~/.quantro/config.json with environment variable overrides and policy controls."""
 
     def __init__(self, config_path: Optional[Path] = None):
         self.config_path = config_path or CONFIG_FILE
         self.config: Dict[str, Any] = self._load()
+        # Ensure directories exist
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        SKILLS_GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
 
     def _load(self) -> Dict[str, Any]:
         """Loads configuration from disk or initializes defaults."""
@@ -93,7 +106,6 @@ class ConfigManager:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-                # Merge with defaults for missing keys
                 merged = DEFAULT_CONFIG.copy()
                 for key, val in loaded.items():
                     if isinstance(val, dict) and key in merged and isinstance(merged[key], dict):
@@ -111,7 +123,7 @@ class ConfigManager:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
     def save(self) -> None:
-        """Saves current memory configuration to disk."""
+        """Persists in-memory config to disk."""
         self._save_raw(self.config)
 
     @property
@@ -134,25 +146,34 @@ class ConfigManager:
         self.save()
 
     @property
-    def auto_approve_bash(self) -> bool:
-        return self.config.get("auto_approve_bash", False)
+    def active_agent(self) -> str:
+        return self.config.get("active_agent", "build")
 
-    @auto_approve_bash.setter
-    def auto_approve_bash(self, value: bool) -> None:
-        self.config["auto_approve_bash"] = bool(value)
+    @active_agent.setter
+    def active_agent(self, agent: str) -> None:
+        self.config["active_agent"] = agent
+        self.save()
+
+    @property
+    def bash_permission(self) -> str:
+        return self.config.get("permissions", {}).get("bash", "ask")
+
+    @bash_permission.setter
+    def bash_permission(self, policy: str) -> None:
+        if "permissions" not in self.config:
+            self.config["permissions"] = {}
+        self.config["permissions"]["bash"] = policy
         self.save()
 
     def get_api_key(self, provider: Optional[str] = None) -> Optional[str]:
-        """Returns API key from config or environment variable."""
+        """Resolves API key with priority: env var > config file."""
         prov = provider or self.active_provider
         prov_info = DEFAULT_PROVIDERS.get(prov, {})
         env_var = prov_info.get("env_var", "")
 
-        # 1. Check environment variable
         if env_var and os.getenv(env_var):
             return os.getenv(env_var)
 
-        # 2. Check config file
         providers_dict = self.config.get("providers", {})
         prov_cfg = providers_dict.get(prov, {})
         key = prov_cfg.get("api_key", "").strip()
@@ -171,16 +192,13 @@ class ConfigManager:
         self.save()
 
     def get_base_url(self, provider: Optional[str] = None) -> str:
-        """Returns API base URL for the given provider."""
         prov = provider or self.active_provider
         prov_info = DEFAULT_PROVIDERS.get(prov, {})
         return prov_info.get("base_url", "https://openrouter.ai/api/v1")
 
     def get_recommended_models(self, provider: Optional[str] = None) -> List[str]:
-        """Returns recommended models for provider."""
         prov = provider or self.active_provider
         return DEFAULT_PROVIDERS.get(prov, {}).get("recommended_models", [])
 
 
-# Global configuration singleton instance
 config_manager = ConfigManager()

@@ -1,35 +1,104 @@
-# ⚡ Quantro CLI
+# ⚡ Quantro 2.0
 
 > **Autonomous Terminal Coding & Software Engineering Agent**  
-> Designed with Claude Code & OpenCode architecture for developers who live in the terminal.
+> Architected following **OpenCode 2.0** and **Claude Code** standards: specialized agent roles (`build`, `plan`, `review`, `test`), full session persistence, step telemetry timeline, and instant unified diffs.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Version: 2.0.0](https://img.shields.io/badge/version-2.0.0-cyan)](https://github.com/Lennebraha38/quantro-cli)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
-[![Code Style: Production Ready](https://img.shields.io/badge/code%20quality-100%25%20production-green)](https://github.com/Lennebraha38/quantro-cli)
-
-Quantro is an autonomous, inline-scrollback terminal AI pair programmer. It navigates repositories, reads files with line numbering, performs edits with colored unified diffs, runs builds and tests in your shell, and maintains persistent project memory — all directly from your terminal.
+[![Architecture: OpenCode 2.0](https://img.shields.io/badge/architecture-OpenCode%202.0-magenta)](https://github.com/Lennebraha38/quantro-cli)
 
 ---
 
-## 🌟 Key Features
+## 🏛️ OpenCode 2.0 Modular Architecture
 
-- **Inline Scrollback UI:** No clunky full-screen TUI apps. Quantro flows naturally in your terminal history, displaying branch tree logs (`● Read(src/main.py)` ➔ `  ⎿  120 satır okundu.`).
-- **Production-Quality Autonomous Loop:** Equipped with ReAct tool-calling logic that reads before modifying, verifies syntax, and inspects errors.
-- **Unified Diff Viewer & Undo Engine:** Every file modification displays a color-coded unified diff and snapshots previous states. Revert unwanted changes instantly with `/undo`.
-- **Multi-Provider & Model Agnostic:**
-  - **OpenRouter** (DeepSeek, Claude 3.5 Sonnet, GPT-4o, Llama 3.3)
-  - **Google Gemini** (Gemini 2.5 Pro, Gemini 2.5 Flash)
-  - **DeepSeek Official** (DeepSeek V3, DeepSeek R1 / Reasoner)
-  - **OpenAI** (GPT-4o, GPT-4o mini, o3-mini)
-- **Interactive Shell Safety:** Shell commands require explicit approval (`[E]vet / [H]ayır / [D]aima`) unless overridden.
-- **Live Token & Cost Meter:** Real-time token usage and USD pricing tracking across all providers.
-- **Persistent Project Memory (`QUANTRO.md`):** Automatically scans and stores project architecture, coding rules, and conventions for context preservation.
+Quantro 2.0 decouples agent orchestration, session storage, tool dispatch, and visual telemetry into modular subsystems:
+
+```
+quantro-cli/
+├── pyproject.toml              # Packaging & entry point (`quantro = quantro.cli:main`)
+├── README.md                   # Complete documentation
+├── LICENSE                     # MIT License
+└── quantro/
+    ├── __init__.py             # Version (2.0.0)
+    ├── cli.py                  # CLI Subcommands (run, session, models, stats, auth) & REPL
+    ├── config.py               # Credentials, permission policies (ask/allow/deny)
+    ├── ui.py                   # OpenCode 2.0 visual telemetry, step timeline & diffs
+    ├── agent/
+    │   ├── loop.py             # ReAct multi-step autonomous tool execution loop
+    │   ├── roles.py            # Specialized roles: BUILD, PLAN, REVIEW, TEST
+    │   └── memory.py           # QUANTRO.md project memory & context compaction
+    ├── session/
+    │   └── storage.py          # Multi-session persistence (~/.quantro/sessions/<id>.json), resume (-c)
+    ├── tools/
+    │   ├── fs.py               # read_file, write_file, edit_file (with unified diffs & undo snapshots)
+    │   ├── shell.py            # run_bash (permission check [E]/[H]/[D], timeout handling)
+    │   ├── search.py           # list_files, grep_search (noise filtering)
+    │   └── registry.py         # Unified tool dispatcher & OpenAI function schemas
+    └── skills/
+        └── __init__.py         # Custom skills discovery (.quantro/skills and ~/.quantro/skills)
+```
+
+---
+
+## 🌟 Key Capabilities
+
+### 1. Specialized Agent Roles
+Switch roles on the fly using `/agent <mode>` or CLI flag `-a <mode>`:
+- **`BUILD` (Developer):** Autonomous feature implementation, refactoring, and bug fixes.
+- **`PLAN` (Architect):** Deep codebase inspection and step-by-step roadmap drafting without touching files.
+- **`REVIEW` (Senior Reviewer):** Comprehensive audit of git working tree, identifying bugs, security flaws, and regressions.
+- **`TEST` (QA Engineer):** Test suite execution via `run_bash`, generating unit tests and asserting coverage.
+
+### 2. Multi-Session Persistence & Resume
+- Automatically persists turns, undo snapshots, token metrics, and tool calls under `~/.quantro/sessions/`.
+- Resume the last active session with:
+  ```bash
+  quantro -c
+  # Or resume a specific session by ID:
+  quantro -s 3f9a1b2c
+  ```
+- Manage stored sessions:
+  ```bash
+  quantro session list
+  quantro session delete <id>
+  ```
+
+### 3. OpenCode 2.0 Inline Telemetry
+No full-screen TUI locks. Quantro 2.0 renders high-density visual telemetry directly in terminal scrollback:
+```text
+┌── quantro 2.0 ────────────────────────────────────────── [BUILD] ──┐
+│ 📂 /root/projects/quantro-cli                                       │
+│ 🤖 deepseek/deepseek-chat (OpenRouter) │ ⚡ session: 7b841e0a        │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─ Step 1 · Executing 2 action(s)
+│ ⚡ list_files(directory='.', max_depth=2)
+│   ↳ Done
+│ ⚡ read_file(path='quantro/cli.py', start_line=1, end_line=50)
+│   ↳ Done
+└─ ✓ Step actions completed
+
+┌── Code Diff: quantro/cli.py (+14 -2) ───────────────────────────────┐
+│ @@ -20,4 +20,16 @@                                                  │
+│ - old_implementation()                                              │
+│ + new_production_code()                                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 4. Safety & Permissions Engine
+- Permission levels: `ask` (default), `allow` (`--auto`), `deny`.
+- Shell prompts: `[E]vet / [H]ayır / [D]aima`. Choosing `D` enables auto-approval for the remainder of the session.
+
+### 5. Multi-Provider LLM Support
+- **OpenRouter** (`deepseek/deepseek-chat`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `meta-llama/llama-3.3-70b-instruct`)
+- **Google Gemini** (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-1.5-pro`)
+- **DeepSeek Official** (`deepseek-chat`, `deepseek-reasoner`)
+- **OpenAI** (`gpt-4o`, `gpt-4o-mini`, `o3-mini`, `o1`)
 
 ---
 
 ## 📦 Installation
-
-### From Source (Editable Mode)
 
 ```bash
 git clone https://github.com/Lennebraha38/quantro-cli.git
@@ -37,103 +106,60 @@ cd quantro-cli
 pip install -e .
 ```
 
-*Note: On Linux distributions with externally-managed environments (PEP 668), add `--break-system-packages` if not using a virtualenv.*
-
 ---
 
-## 🚀 Quick Start
+## 🚀 CLI Commands & Subcommands
 
-### 1. Configure Your API Key
-
-Quantro supports standard environment variables:
-
+### Subcommands
 ```bash
-# OpenRouter (Default)
-export OPENROUTER_API_KEY="sk-or-v1-..."
+# Direct task execution
+quantro run "Refactor configuration parser and run pytest"
 
-# Or Google Gemini
-export GEMINI_API_KEY="AIzaSy..."
+# View usage telemetry & token expenditure
+quantro stats
 
-# Or DeepSeek
-export DEEPSEEK_API_KEY="sk-..."
+# Inspect supported providers and model catalog
+quantro models
 
-# Or OpenAI
-export OPENAI_API_KEY="sk-proj-..."
+# List or delete sessions
+quantro session list
+quantro session delete <session_id>
+
+# Store provider credentials
+quantro auth -p openrouter -k "sk-or-v1-..."
 ```
 
-Alternatively, you can pass your API key or configure it in `~/.quantro/config.json`:
-
+### Interactive REPL Flags
 ```bash
-quantro --api-key "your-api-key"
-```
-
-### 2. Interactive REPL Mode
-
-Simply run `quantro` inside any repository:
-
-```bash
-quantro
-```
-
-### 3. Fast Single-Shot Mode
-
-Execute tasks directly from your shell without entering the REPL:
-
-```bash
-quantro "Find all occurrences of deprecated API in src/ and update them"
-quantro "Run test suite and fix any failing assertions in tests/test_core.py"
+quantro                         # Start new session in current directory
+quantro -c                      # Continue last session
+quantro -s <id>                 # Resume specific session
+quantro -a plan                 # Start in PLANNER role
+quantro -a review               # Start in REVIEWER role
+quantro -m gpt-4o               # Start with specific model
+quantro --auto                  # Auto-approve shell execution
 ```
 
 ---
 
-## 🎮 Slash Commands
+## 🎮 Interactive Slash Commands
 
-Within the interactive REPL, prefix commands with `/`:
+Inside the REPL, type `/` to access commands with autocomplete:
 
-| Command | Description |
+| Slash Command | Description |
 | :--- | :--- |
-| `/help` | Display the commands quick reference |
-| `/model [name]` | View active model or switch to a new model/provider |
-| `/init` | Scan repository and generate/update `QUANTRO.md` project guide |
-| `/diff` | Inspect git diff or review the agent's last file modification |
+| `/help` | Display interactive command cheat sheet |
+| `/agent [role]` | Switch agent mode: `build`, `plan`, `review`, `test` |
+| `/model [name]` | View model table or switch active LLM |
+| `/session [list\|new]` | Manage, list, or start new sessions |
+| `/skills` | List discovered project and user skills |
+| `/init` | Analyze repository and generate `QUANTRO.md` |
+| `/diff` | Inspect git diff or last agent file change |
 | `/undo` | Roll back the last file edit made by Quantro |
-| `/compact` | Compress long conversation history into a structured summary |
-| `/cost` | Display session token usage and estimated USD cost breakdown |
-| `/clear` | Clear the terminal screen |
-| `/exit`, `/quit` | Exit the Quantro interactive session |
-
----
-
-## 🛠️ Built-in Autonomous Tools
-
-Quantro provides 6 production-grade tools used autonomously during tasks:
-
-1. `read_file(path, start_line, end_line)`: Inspects source code with line numbers.
-2. `write_file(path, content)`: Creates new modules or writes files with automatic undo snapshots.
-3. `edit_file(path, search_block, replace_block)`: Safely replaces blocks of code with unified diff preview.
-4. `run_bash(command)`: Executes build, test, and git commands with safety approval.
-5. `list_files(directory, max_depth)`: Scans project hierarchy, filtering ignore patterns (`.git`, `node_modules`, `__pycache__`).
-6. `grep_search(pattern, path, recursive)`: Performs lightning-fast regex search across the codebase.
-
----
-
-## 🏗️ Architecture
-
-```
-quantro-cli/
-├── pyproject.toml          # Package configuration & console entrypoint: quantro = "quantro.cli:main"
-├── README.md               # Documentation and guides
-├── LICENSE                 # MIT License
-├── .gitignore              # Repository exclusions
-└── quantro/
-    ├── __init__.py         # Package version (1.0.0)
-    ├── cli.py              # CLI parser, prompt_toolkit REPL, bottom toolbar, slash commands
-    ├── config.py           # ~/.quantro/config.json & provider credentials
-    ├── ui.py               # Rich inline scrollback UI, branch tree logs, unified diffs
-    ├── agent.py            # ReAct tool-calling loop with HTTPX client
-    ├── tools.py            # 6 autonomous file & shell tools + OpenAI JSON schemas
-    └── context.py          # QUANTRO.md project memory, token/cost meter, undo stack
-```
+| `/compact` | Compress history to free token context window |
+| `/cost` | Display session token usage and USD pricing breakdown |
+| `/clear` | Clear terminal screen |
+| `/exit`, `/quit` | Save session state and exit |
 
 ---
 
