@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantro"
+version = "1.0.0"
+description = "Quantro - Autonomous Terminal Coding & Software Engineering Agent"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Faruk Hilmi Akpinar", email = "farukhilmi12345@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "rich>=13.0.0",
+    "prompt_toolkit>=3.0.0",
+    "httpx>=0.25.0"
+]
+keywords = [
+    "ai",
+    "coding-agent",
+    "cli",
+    "autonomous",
+    "developer-tools",
+    "software-engineering",
+    "claude-code",
+    "opencode"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Quality Assurance"
+]
+
+[project.scripts]
+quantro = "quantro.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quantro*"]
