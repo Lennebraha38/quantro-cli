@@ -1,7 +1,7 @@
-# ⚡ Quantro 2.0
+# ⚡ Quantro 2.0 (OpenCode & Claude Code Peer Architecture)
 
 > **Autonomous Terminal Coding & Software Engineering Agent**  
-> Architected following **OpenCode 2.0** and **Claude Code** standards: specialized agent roles (`build`, `plan`, `review`, `test`), full session persistence, step telemetry timeline, and instant unified diffs.
+> Built for developers who live in the terminal. Features live SSE token streaming, `@` fuzzy file referencing, fuzzy code patching, AST syntax diagnostics, background daemon shell, sub-agent isolation, web search, MCP support, granular permissions, and automated Git workflows.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Version: 2.0.0](https://img.shields.io/badge/version-2.0.0-cyan)](https://github.com/Lennebraha38/quantro-cli)
@@ -12,93 +12,76 @@
 
 ## 🏛️ OpenCode 2.0 Modular Architecture
 
-Quantro 2.0 decouples agent orchestration, session storage, tool dispatch, and visual telemetry into modular subsystems:
-
 ```
 quantro-cli/
-├── pyproject.toml              # Packaging & entry point (`quantro = quantro.cli:main`)
+├── pyproject.toml              # Entry point: `quantro = quantro.cli:main`
 ├── README.md                   # Complete documentation
 ├── LICENSE                     # MIT License
 └── quantro/
     ├── __init__.py             # Version (2.0.0)
-    ├── cli.py                  # CLI Subcommands (run, session, models, stats, auth) & REPL
-    ├── config.py               # Credentials, permission policies (ask/allow/deny)
-    ├── ui.py                   # OpenCode 2.0 visual telemetry, step timeline & diffs
+    ├── cli.py                  # OpenCode subcommands, @ fuzzy completer, /commit, /review & REPL
+    ├── config.py               # Granular security policies (safe whitelist vs dangerous prompt), MCP config
+    ├── ui.py                   # OpenCode 2.0 visual telemetry, step timeline, live SSE streaming & diffs
     ├── agent/
-    │   ├── loop.py             # ReAct multi-step autonomous tool execution loop
+    │   ├── loop.py             # SSE streaming ReAct loop with Ctrl+C interrupt preservation
     │   ├── roles.py            # Specialized roles: BUILD, PLAN, REVIEW, TEST
-    │   └── memory.py           # QUANTRO.md project memory & context compaction
+    │   ├── memory.py           # QUANTRO.md project memory, output pruning & auto-compaction
+    │   └── subagent.py         # Isolated sub-agent execution (`dispatch_agent`)
     ├── session/
-    │   └── storage.py          # Multi-session persistence (~/.quantro/sessions/<id>.json), resume (-c)
+    │   └── storage.py          # Session persistence (~/.quantro/sessions/<id>.json), resume (-c / -s)
     ├── tools/
-    │   ├── fs.py               # read_file, write_file, edit_file (with unified diffs & undo snapshots)
-    │   ├── shell.py            # run_bash (permission check [E]/[H]/[D], timeout handling)
+    │   ├── fs.py               # Fuzzy edit, multi_edit, unified diffs & AST/LSP syntax diagnostics
+    │   ├── shell.py            # Live output streaming & background daemon manager (run_in_background)
     │   ├── search.py           # list_files, grep_search (noise filtering)
-    │   └── registry.py         # Unified tool dispatcher & OpenAI function schemas
+    │   ├── web.py              # web_fetch (HTML to Markdown) & web_search (DuckDuckGo integration)
+    │   ├── mcp.py              # Model Context Protocol (MCP) JSON-RPC client
+    │   └── registry.py         # Unified tool dispatcher & 13 OpenAI function schemas
     └── skills/
-        └── __init__.py         # Custom skills discovery (.quantro/skills and ~/.quantro/skills)
+        └── __init__.py         # Custom skills discovery (.quantro/skills & ~/.quantro/skills)
 ```
 
 ---
 
-## 🌟 Key Capabilities
+## 🌟 8 Deep Engineering Capabilities
 
-### 1. Specialized Agent Roles
-Switch roles on the fly using `/agent <mode>` or CLI flag `-a <mode>`:
-- **`BUILD` (Developer):** Autonomous feature implementation, refactoring, and bug fixes.
-- **`PLAN` (Architect):** Deep codebase inspection and step-by-step roadmap drafting without touching files.
-- **`REVIEW` (Senior Reviewer):** Comprehensive audit of git working tree, identifying bugs, security flaws, and regressions.
-- **`TEST` (QA Engineer):** Test suite execution via `run_bash`, generating unit tests and asserting coverage.
+### 1. Live SSE Token Streaming & Non-Destructive Ctrl+C
+- Uses Server-Sent Events (`stream=True`) to stream thinking/reasoning and code responses token-by-token.
+- Pressing **Ctrl+C** or **Esc** cleanly interrupts only the active LLM generation or long-running tool and drops back to the prompt `❯` without killing the REPL session.
 
-### 2. Multi-Session Persistence & Resume
-- Automatically persists turns, undo snapshots, token metrics, and tool calls under `~/.quantro/sessions/`.
-- Resume the last active session with:
-  ```bash
-  quantro -c
-  # Or resume a specific session by ID:
-  quantro -s 3f9a1b2c
-  ```
-- Manage stored sessions:
-  ```bash
-  quantro session list
-  quantro session delete <id>
-  ```
+### 2. `@` Fuzzy File Mentions & Automatic Context Injection
+- Typing `@` opens dynamic fuzzy autocomplete across the repository.
+- Referencing `@src/app.py` in your prompt automatically reads and embeds the file content into the agent's context.
 
-### 3. OpenCode 2.0 Inline Telemetry
-No full-screen TUI locks. Quantro 2.0 renders high-density visual telemetry directly in terminal scrollback:
-```text
-┌── quantro 2.0 ────────────────────────────────────────── [BUILD] ──┐
-│ 📂 /root/projects/quantro-cli                                       │
-│ 🤖 deepseek/deepseek-chat (OpenRouter) │ ⚡ session: 7b841e0a        │
-└─────────────────────────────────────────────────────────────────────┘
+### 3. Fuzzy Code Patching, `multi_edit`, and AST Syntax Self-Correction
+- **Whitespace & Indentation Tolerant:** Fuzzy matching ensures code edits succeed even if the model slightly alters indentation.
+- **`multi_edit`:** Applies multiple search/replace blocks across a file in a single atomic transaction.
+- **AST / Syntax Diagnostics:** After saving Python or JSON files, validates syntax via `ast.parse`. If a syntax error is introduced, the error is immediately returned to the agent so it self-corrects before continuing.
 
-┌─ Step 1 · Executing 2 action(s)
-│ ⚡ list_files(directory='.', max_depth=2)
-│   ↳ Done
-│ ⚡ read_file(path='quantro/cli.py', start_line=1, end_line=50)
-│   ↳ Done
-└─ ✓ Step actions completed
+### 4. Live Output Streaming & Background Daemon Shell
+- Foreground commands stream their output line-by-line so your terminal never locks up during long builds or test suites.
+- Long-running servers (`npm run dev`, `python -m http.server`) run as background jobs (`run_in_background`) with output ring buffers and log retrieval (`get_background_logs`).
 
-┌── Code Diff: quantro/cli.py (+14 -2) ───────────────────────────────┐
-│ @@ -20,4 +20,16 @@                                                  │
-│ - old_implementation()                                              │
-│ + new_production_code()                                             │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### 5. Sub-Agent Delegation (`dispatch_agent`)
+- When researching large codebases or reading dozens of files, the main agent launches an isolated sub-agent.
+- The sub-agent inspects 15-20 files in a temporary session, terminates, and returns a concise summary back to the main agent, keeping the primary context window lean and focused.
 
-### 4. Safety & Permissions Engine
-- Permission levels: `ask` (default), `allow` (`--auto`), `deny`.
-- Shell prompts: `[E]vet / [H]ayır / [D]aima`. Choosing `D` enables auto-approval for the remainder of the session.
+### 6. Internet Access (`web_fetch` & `web_search`) and MCP Support
+- **`web_fetch`:** Fetches remote documentation or URLs and converts raw HTML into clean, readable Markdown.
+- **`web_search`:** Performs real-time online searches for APIs, libraries, and error messages.
+- **MCP Client:** Connects to Model Context Protocol servers configured in `~/.quantro/config.json`.
 
-### 5. Multi-Provider LLM Support
-- **OpenRouter** (`deepseek/deepseek-chat`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, `meta-llama/llama-3.3-70b-instruct`)
-- **Google Gemini** (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-1.5-pro`)
-- **DeepSeek Official** (`deepseek-chat`, `deepseek-reasoner`)
-- **OpenAI** (`gpt-4o`, `gpt-4o-mini`, `o3-mini`, `o1`)
+### 7. Granular Command Security Policy
+- **Safe Whitelist:** Commands like `git status`, `git diff`, `ls`, `cat`, and `pytest` are automatically allowed.
+- **Strict Confirmation:** Dangerous commands like `rm`, `sudo`, `git push`, and `chmod` ALWAYS require interactive confirmation (`[E]vet / [H]ayır`), even if general shell approval is active.
+
+### 8. Auto-Compact & Automated Git Workflows (`/commit` & `/review`)
+- **Auto-Compact:** Triggers automatically when tokens reach the threshold (e.g. 35k tokens), pruning older tool outputs and summarizing conversation history.
+- **`/commit`:** Analyzes working tree diffs, generates conventional commit messages (`feat(...)`, `fix(...)`), stages files, and commits with one click.
+- **`/review`:** Executes automated senior code review on unstaged or staged git changes.
 
 ---
 
-## 📦 Installation
+## 🚀 Installation & Usage
 
 ```bash
 git clone https://github.com/Lennebraha38/quantro-cli.git
@@ -106,60 +89,41 @@ cd quantro-cli
 pip install -e .
 ```
 
----
-
-## 🚀 CLI Commands & Subcommands
+### Starting Quantro
+```bash
+quantro                         # Launch interactive session
+quantro -c                      # Resume previous session
+quantro -s <id>                 # Resume specific session
+quantro -a review               # Launch in REVIEWER mode
+quantro -a plan                 # Launch in PLANNER mode
+quantro --auto                  # Auto-approve non-dangerous commands
+```
 
 ### Subcommands
 ```bash
-# Direct task execution
-quantro run "Refactor configuration parser and run pytest"
-
-# View usage telemetry & token expenditure
-quantro stats
-
-# Inspect supported providers and model catalog
-quantro models
-
-# List or delete sessions
+quantro run "Run test suite and fix failing tests"
 quantro session list
-quantro session delete <session_id>
-
-# Store provider credentials
+quantro models
+quantro stats
 quantro auth -p openrouter -k "sk-or-v1-..."
 ```
 
-### Interactive REPL Flags
-```bash
-quantro                         # Start new session in current directory
-quantro -c                      # Continue last session
-quantro -s <id>                 # Resume specific session
-quantro -a plan                 # Start in PLANNER role
-quantro -a review               # Start in REVIEWER role
-quantro -m gpt-4o               # Start with specific model
-quantro --auto                  # Auto-approve shell execution
-```
-
----
-
-## 🎮 Interactive Slash Commands
-
-Inside the REPL, type `/` to access commands with autocomplete:
-
-| Slash Command | Description |
+### Slash Commands Cheat Sheet
+| Command | Action |
 | :--- | :--- |
-| `/help` | Display interactive command cheat sheet |
-| `/agent [role]` | Switch agent mode: `build`, `plan`, `review`, `test` |
-| `/model [name]` | View model table or switch active LLM |
-| `/session [list\|new]` | Manage, list, or start new sessions |
-| `/skills` | List discovered project and user skills |
-| `/init` | Analyze repository and generate `QUANTRO.md` |
-| `/diff` | Inspect git diff or last agent file change |
-| `/undo` | Roll back the last file edit made by Quantro |
-| `/compact` | Compress history to free token context window |
-| `/cost` | Display session token usage and USD pricing breakdown |
+| `@<file>` | Fuzzy file reference and context injection |
+| `/commit` | Generate conventional commit from git diff and commit |
+| `/review` | Audit git changes with Senior Reviewer agent |
+| `/agent [role]` | Switch agent role (`build`, `plan`, `review`, `test`) |
+| `/model [name]` | Switch LLM model |
+| `/session [list\|new]` | Manage sessions |
+| `/init` | Generate repository guide (`QUANTRO.md`) |
+| `/diff` | Inspect git diff or last file edit |
+| `/undo` | Roll back last file modification |
+| `/compact` | Compress session history |
+| `/cost` | View session token and cost analytics |
 | `/clear` | Clear terminal screen |
-| `/exit`, `/quit` | Save session state and exit |
+| `/exit`, `/quit` | Save and exit session |
 
 ---
 

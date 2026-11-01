@@ -1,11 +1,12 @@
 """
 Quantro 2.0 Memory & Context Manager
-Integrates QUANTRO.md project memory, token accounting, and session compaction.
+Integrates QUANTRO.md project memory, token accounting, tool output pruning, and auto-compaction.
 """
 
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from quantro.agent.roles import ROLE_DEFINITIONS
+from quantro.config import config_manager
 
 MODEL_PRICING: Dict[str, Dict[str, float]] = {
     "deepseek/deepseek-chat": {"input": 0.14, "output": 0.28},
@@ -96,7 +97,8 @@ Environment: Linux Terminal / OpenCode 2.0 Autonomous Engine
 
 Operational Rules:
 - NEVER use placeholder code (`TODO`, `pass`, `...`). Write 100% complete, working code.
-- Always use `read_file` to inspect lines before using `edit_file`.
+- Always inspect code first with `read_file` before making modifications with `edit_file` or `multi_edit`.
+- For research and deep multi-file lookups, delegate using `dispatch_agent` to keep main context clean.
 - Verify modifications with tests or syntax checks via `run_bash` where applicable.
 """
         project_mem = self.read_project_memory()
@@ -105,7 +107,26 @@ Operational Rules:
 
         return sys_content
 
+    def prune_tool_outputs(self, messages: List[Dict[str, Any]]) -> int:
+        """
+        Prunes large outputs from older tool calls (leaving the last 4 messages intact).
+        Returns number of pruned tool messages.
+        """
+        if len(messages) <= 6:
+            return 0
+
+        pruned_count = 0
+        older = messages[:-4]
+        for msg in older:
+            if msg.get("role") == "tool":
+                content = msg.get("content", "")
+                if isinstance(content, str) and len(content) > 300:
+                    msg["content"] = content[:150] + f"\n... [Output pruned: {len(content)} chars to save context]"
+                    pruned_count += 1
+        return pruned_count
+
     def compact_messages(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+        """Compresses older message history into structured summary."""
         if len(messages) <= 4:
             return messages, 0
 
@@ -125,11 +146,26 @@ Operational Rules:
                     summaries.append(f"- [tool]: {fn}")
 
         summary_text = (
-            "[SYSTEM MEMORY COMPACTED SUMMARY]\n"
-            + "\n".join(summaries[-12:])
-            + "\n[END COMPACTED SUMMARY]"
+            "[SYSTEM MEMORY AUTO-COMPACTED SUMMARY]\n"
+            + "\n".join(summaries[-15:])
+            + "\n[END AUTO-COMPACTED SUMMARY]"
         )
 
         compacted = [{"role": "system", "content": summary_text}] + recent
         pruned_count = initial_len - len(compacted)
         return compacted, pruned_count
+
+    def check_and_auto_compact(self, session) -> bool:
+        """Automatically prunes and compacts session if tokens exceed configured threshold."""
+        if not config_manager.auto_compact_enabled:
+            return False
+
+        threshold = config_manager.auto_compact_threshold
+        if session.total_tokens >= threshold:
+            # 1. Prune old tool outputs
+            self.prune_tool_outputs(session.messages)
+            # 2. Compact history
+            compacted, pruned = self.compact_messages(session.messages)
+            session.messages = compacted
+            return True
+        return False

@@ -1,14 +1,19 @@
 """
-Quantro 2.0 CLI & Subcommands Engine
-Implements OpenCode 2.0 subcommands (run, session, models, stats, auth) and interactive REPL.
+Quantro 2.0 CLI & Interactive REPL
+Implements OpenCode 2.0 subcommands, @ fuzzy file mentions, /commit and /review Git automations,
+and resilient Ctrl+C interrupt handling.
 """
 
 import os
+import re
 import sys
 import argparse
+import subprocess
 from pathlib import Path
+from typing import Iterable, List
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.document import Document
 from prompt_toolkit.styles import Style
 
 from quantro import __version__
@@ -22,6 +27,8 @@ SLASH_COMMANDS = [
     "/help",
     "/agent",
     "/model",
+    "/commit",
+    "/review",
     "/session",
     "/skills",
     "/init",
@@ -40,6 +47,154 @@ prompt_style = Style.from_dict({
 })
 
 
+class QuantroCompleter(Completer):
+    """
+    Intelligent auto-completer:
+    1. Completes / slash commands when line starts with /
+    2. Completes @ file paths dynamically with fuzzy matching across project repository
+    """
+
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+
+    def _get_project_files(self) -> List[str]:
+        file_list: List[str] = []
+        try:
+            for root, dirs, files in os.walk(self.project_root):
+                dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".venv", ".cache"} and not d.startswith(".")]
+                for f in files:
+                    if not f.startswith("."):
+                        full = Path(root) / f
+                        try:
+                            rel = full.relative_to(self.project_root)
+                            file_list.append(str(rel))
+                        except Exception:
+                            file_list.append(f)
+                if len(file_list) > 600:
+                    break
+        except Exception:
+            pass
+        return file_list
+
+    def get_completions(self, document: Document, complete_event) -> Iterable[Completion]:
+        text = document.text_before_cursor
+
+        # 1. Slash command completion
+        if text.startswith("/"):
+            word = text.strip()
+            for cmd in SLASH_COMMANDS:
+                if cmd.startswith(word):
+                    yield Completion(cmd, start_position=-len(text))
+            return
+
+        # 2. @ file mention completion
+        at_match = re.search(r"@([a-zA-Z0-9_\-\./]*)$", text)
+        if at_match:
+            sub = at_match.group(1).lower()
+            start_pos = -len(sub) - 1
+            files = self._get_project_files()
+            for f in files:
+                f_lower = f.lower()
+                if sub in f_lower or not sub:
+                    yield Completion(f"@{f}", start_position=start_pos, display=f"@{f}")
+
+
+def expand_file_mentions(prompt: str, project_root: Path) -> str:
+    """
+    Finds @filepath occurrences in the user prompt and injects their content into the agent context.
+    """
+    mentions = re.findall(r"@([a-zA-Z0-9_\-\./]+)", prompt)
+    if not mentions:
+        return prompt
+
+    injected_sections: List[str] = []
+    seen = set()
+
+    for m in mentions:
+        if m in seen:
+            continue
+        seen.add(m)
+        target = Path(m).expanduser()
+        if not target.is_absolute():
+            target = project_root / target
+
+        if target.exists() and target.is_file():
+            try:
+                content = target.read_text(encoding="utf-8", errors="replace")
+                injected_sections.append(
+                    f"\n--- [REFERENCED FILE: {m}] ---\n{content}\n--- [END OF {m}] ---\n"
+                )
+            except Exception:
+                pass
+
+    if injected_sections:
+        return prompt + "\n" + "\n".join(injected_sections)
+    return prompt
+
+
+def handle_git_commit(engine: AgentEngine, session: Session):
+    """
+    Autonomous Git commit generator:
+    Inspects diff, calls LLM to generate conventional commit, prompts user, and commits.
+    """
+    diff_res = engine.executor.shell.run_bash("git diff HEAD", auto_approve=True)
+    if not diff_res.get("success") or not diff_res.get("output") or "(Komut sessizce" in diff_res.get("output"):
+        diff_res = engine.executor.shell.run_bash("git status -s", auto_approve=True)
+        if not diff_res.get("output") or "(Komut sessizce" in diff_res.get("output"):
+            ui.console.print("[dim]Değişiklik bulunamadı (Working tree clean).[/dim]")
+            return
+
+    diff_text = diff_res.get("output", "")[:4000]
+
+    ui.console.print("[cyan]Git diff analiz ediliyor ve commit mesajı üretiliyor...[/cyan]")
+    prompt = (
+        "Generate a single-line conventional commit message (e.g. 'feat(auth): add jwt support' or 'fix(cli): resolve path error') "
+        "based strictly on this git diff. Output ONLY the commit message itself, nothing else:\n\n"
+        + diff_text
+    )
+
+    commit_msg = engine.run(prompt, max_steps=1).strip().replace('"', '')
+    # If returned as markdown code, clean it
+    commit_msg = re.sub(r"^`+|`+$", "", commit_msg).strip()
+
+    ui.console.print(f"\n[bold green]Önerilen Commit Mesajı:[/bold green] [yellow]\"{commit_msg}\"[/yellow]")
+    choice = input("Değişiklikler stage edilip commit atılsın mı? [E/H]: ").strip().lower()
+    if choice in ("e", "evet", "y", "yes", ""):
+        engine.executor.shell.run_bash("git add -A", auto_approve=True)
+        res = engine.executor.shell.run_bash(f'git commit -m "{commit_msg}"', auto_approve=True)
+        if res.get("success"):
+            ui.console.print(f"[bold green]✓ Commit başarıyla oluşturuldu:[/bold green] {commit_msg}")
+        else:
+            ui.console.print(f"[bold red]Commit hatası:[/bold red] {res.get('output')}")
+
+
+def handle_git_review(engine: AgentEngine, session: Session):
+    """
+    Autonomous Senior Code Review:
+    Audits current git diff against HEAD and prints findings.
+    """
+    diff_res = engine.executor.shell.run_bash("git diff HEAD", auto_approve=True)
+    diff_text = diff_res.get("output", "")
+    if not diff_text or "(Komut sessizce" in diff_text:
+        ui.console.print("[dim]İncelenecek git değişikliği bulunamadı (git diff HEAD boş).[/dim]")
+        return
+
+    old_role = config_manager.active_agent
+    config_manager.active_agent = "review"
+
+    ui.console.print("[bold magenta]🔍 Kıdemli Kod İncelemesi (Senior Code Review) Başlatılıyor...[/bold magenta]")
+    review_prompt = (
+        "Lütfen aşağıdaki git değişikliklerini ayrıntılı olarak incele:\n"
+        "1. Potansiyel mantık ve sözdizimi hataları (bugs)\n"
+        "2. Güvenlik açıkları ve sınır durumlar (edge-cases)\n"
+        "3. Mimari ve okunabilirlik önerileri\n\n"
+        + diff_text[:7000]
+    )
+
+    engine.run(review_prompt, max_steps=5)
+    config_manager.active_agent = old_role
+
+
 def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -> bool:
     """Handles interactive slash commands. Returns False to exit session."""
     parts = cmd_line.strip().split()
@@ -53,6 +208,12 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
 
     elif cmd == "/help":
         ui.render_help()
+
+    elif cmd == "/commit":
+        handle_git_commit(engine, session)
+
+    elif cmd == "/review":
+        handle_git_review(engine, session)
 
     elif cmd == "/agent":
         if not args:
@@ -166,8 +327,9 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
 
 
 def run_interactive_repl(session: Session, auto_approve: bool = False):
-    """Runs prompt_toolkit REPL with OpenCode 2.0 telemetry."""
+    """Runs prompt_toolkit REPL with @ file completion and OpenCode 2.0 telemetry."""
     engine = AgentEngine(session, auto_approve=auto_approve)
+    project_root = Path(session.project_dir).resolve()
 
     ui.render_header(
         session_id=session.id,
@@ -179,7 +341,7 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
         cost=session.total_cost_usd
     )
 
-    completer = WordCompleter(SLASH_COMMANDS, ignore_case=True, match_middle=False)
+    completer = QuantroCompleter(project_root)
     pt_session = PromptSession(completer=completer, style=prompt_style)
 
     def bottom_bar():
@@ -206,9 +368,17 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
                     break
                 continue
 
-            engine.run(user_input)
+            # Process @file mentions and expand into prompt
+            expanded_prompt = expand_file_mentions(user_input, project_root)
 
-        except (KeyboardInterrupt, EOFError):
+            # Run agent turn
+            engine.run(expanded_prompt)
+
+        except KeyboardInterrupt:
+            # Ctrl+C at prompt resets current line, does not crash REPL
+            ui.console.print("\n[dim](İptal edildi, yeni komut girin)[/dim]")
+            continue
+        except EOFError:
             session_store.save(session)
             ui.console.print("\n[dim]Quantro oturumu kaydedildi ve kapatıldı.[/dim]\n")
             break
@@ -217,11 +387,10 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
 def main():
     parser = argparse.ArgumentParser(
         prog="quantro",
-        description="Quantro 2.0 — Autonomous Terminal Coding Agent (OpenCode Architecture)",
+        description="Quantro 2.0 — Autonomous Terminal Coding Agent (OpenCode 2.0 Architecture)",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    # Subcommands
     subparsers = parser.add_subparsers(dest="subcommand", help="Subcommand to execute")
 
     # Subcommand: run
@@ -306,7 +475,7 @@ def main():
         session_store.save(sess)
         sys.exit(0)
 
-    # Root argument handling
+    # Root flags handling
     if args.model:
         config_manager.active_model = args.model
     if args.provider:
@@ -314,7 +483,6 @@ def main():
     if args.agent:
         config_manager.active_agent = args.agent
 
-    # Session resolution
     curr_dir = str(Path.cwd().resolve())
     session: Optional[Session] = None
 

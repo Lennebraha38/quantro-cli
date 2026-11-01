@@ -1,9 +1,10 @@
 """
 Quantro 2.0 OpenCode-Inspired Terminal UI Engine
 Engineered with Rich for high-density, beautiful inline scrollback visual telemetry.
-Features session cards, step timelines, colored diff boxes, role badges, and status spinners.
+Features session cards, step timelines, colored diff boxes, role badges, live token streaming, and spinners.
 """
 
+import sys
 from contextlib import contextmanager
 from typing import Dict, Any, List, Optional
 from rich.console import Console
@@ -145,6 +146,29 @@ def render_reasoning(thought: str):
     console.print(panel)
 
 
+def stream_token(token: str, is_reasoning: bool = False):
+    """Streams tokens live to the terminal as they are produced by LLM."""
+    if is_reasoning:
+        # Dimmed style for thinking tokens
+        sys.stdout.write(f"\033[2;37m{token}\033[0m")
+    else:
+        sys.stdout.write(token)
+    sys.stdout.flush()
+
+
+def stream_start_reasoning():
+    console.print("[dim cyan]💭 Düşünülüyor...[/dim cyan]")
+
+
+def stream_end():
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
+def render_interrupted():
+    console.print("\n[bold yellow]⚡ İşlem kullanıcı tarafından durduruldu (Ctrl+C)[/bold yellow]\n")
+
+
 def render_markdown(content: str):
     """Renders formatted markdown."""
     if not content.strip():
@@ -221,9 +245,13 @@ def render_help():
     table.add_column("Description", style="white")
 
     table.add_row("/help", "Show all interactive slash commands")
+    table.add_row("@<file>", "Fuzzy file reference (e.g. @app.py) auto-completes and injects file")
     table.add_row("/agent [build|plan|review|test]", "Switch specialized agent role")
     table.add_row("/model [name]", "View or switch active LLM model")
-    table.add_row("/session [list|new|<id>]", "Manage or resume sessions")
+    table.add_row("/commit", "Analyze git diff and generate conventional commit automatically")
+    table.add_row("/review", "Audit current changes and run Senior Code Review")
+    table.add_row("/session [list|new|<id>]", "Manage, list, or resume sessions")
+    table.add_row("/skills", "List discovered repository and user skills")
     table.add_row("/init", "Scan project and generate/update QUANTRO.md")
     table.add_row("/diff", "Show git diff or last agent file change")
     table.add_row("/undo", "Revert last file modification")

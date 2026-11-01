@@ -1,6 +1,6 @@
 """
 Quantro 2.0 Configuration & Permissions System
-Manages provider credentials, model registry, tool permission policies, and system paths.
+Manages provider credentials, model registry, granular permission policies, MCP servers, and system paths.
 """
 
 import os
@@ -63,6 +63,19 @@ DEFAULT_PROVIDERS = {
     }
 }
 
+SAFE_READ_COMMANDS = {
+    "git status", "git diff", "git log", "git branch", "git show",
+    "ls", "dir", "pwd", "cat", "head", "tail", "grep", "which",
+    "pytest", "python -m unittest", "cargo test", "cargo check",
+    "npm test", "bun test", "ruff check", "flake8", "mypy"
+}
+
+STRICT_DANGEROUS_COMMANDS = {
+    "rm", "rmdir", "sudo", "git push", "git reset --hard", "git clean",
+    "chmod", "chown", "dd", "mkfs", "kill", "pkill", "killall",
+    "shutdown", "reboot", "poweroff"
+}
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "version": "2.0.0",
     "active_provider": "openrouter",
@@ -70,10 +83,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "active_agent": "build",
     "permissions": {
         "bash": "ask",          # "ask" | "allow" | "deny"
+        "safe_whitelist_auto": True,
+        "strict_dangerous_ask": True,
         "file_write": "allow",
         "file_edit": "allow",
-        "file_read": "allow"
+        "file_read": "allow",
+        "web_access": "allow"
     },
+    "auto_compact": {
+        "enabled": True,
+        "threshold_tokens": 35000,
+        "prune_tool_outputs": True
+    },
+    "mcp_servers": {},
     "providers": {
         "openrouter": {"api_key": ""},
         "gemini": {"api_key": ""},
@@ -86,12 +108,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 
 class ConfigManager:
-    """Handles ~/.quantro/config.json with environment variable overrides and policy controls."""
+    """Handles ~/.quantro/config.json with granular security policies, MCP, and env fallbacks."""
 
     def __init__(self, config_path: Optional[Path] = None):
         self.config_path = config_path or CONFIG_FILE
         self.config: Dict[str, Any] = self._load()
-        # Ensure directories exist
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         SKILLS_GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
@@ -164,6 +185,40 @@ class ConfigManager:
             self.config["permissions"] = {}
         self.config["permissions"]["bash"] = policy
         self.save()
+
+    @property
+    def auto_compact_enabled(self) -> bool:
+        return self.config.get("auto_compact", {}).get("enabled", True)
+
+    @property
+    def auto_compact_threshold(self) -> int:
+        return self.config.get("auto_compact", {}).get("threshold_tokens", 35000)
+
+    @property
+    def mcp_servers(self) -> Dict[str, Any]:
+        return self.config.get("mcp_servers", {})
+
+    def is_safe_command(self, cmd: str) -> bool:
+        """Checks if command matches safe read-only patterns."""
+        cmd_clean = cmd.strip()
+        first_token = cmd_clean.split()[0] if cmd_clean.split() else ""
+        for safe in SAFE_READ_COMMANDS:
+            if cmd_clean == safe or cmd_clean.startswith(safe + " "):
+                return True
+        return False
+
+    def is_strictly_dangerous(self, cmd: str) -> bool:
+        """Checks if command contains dangerous mutating primitives."""
+        cmd_clean = cmd.strip()
+        tokens = cmd_clean.replace(";", " ").replace("&&", " ").replace("|", " ").split()
+        for tok in tokens:
+            if tok in STRICT_DANGEROUS_COMMANDS:
+                return True
+        if "curl" in tokens and "bash" in tokens:
+            return True
+        if "wget" in tokens and "sh" in tokens:
+            return True
+        return False
 
     def get_api_key(self, provider: Optional[str] = None) -> Optional[str]:
         """Resolves API key with priority: env var > config file."""
