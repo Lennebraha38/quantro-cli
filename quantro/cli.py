@@ -327,18 +327,20 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
 
 
 def run_interactive_repl(session: Session, auto_approve: bool = False):
-    """Runs prompt_toolkit REPL with @ file completion and OpenCode 2.0 telemetry."""
+    """Runs prompt_toolkit REPL with full Mission Control system dashboard and @ file completion."""
     engine = AgentEngine(session, auto_approve=auto_approve)
     project_root = Path(session.project_dir).resolve()
 
-    ui.render_header(
+    # Launch complete OpenCode-style Mission Control System
+    ui.render_system_launch(
         session_id=session.id,
         model=config_manager.active_model,
         provider=config_manager.active_provider,
         project_dir=session.project_dir,
         role=config_manager.active_agent,
         tokens=session.total_tokens,
-        cost=session.total_cost_usd
+        cost=session.total_cost_usd,
+        session_title=session.title
     )
 
     completer = QuantroCompleter(project_root)
@@ -347,15 +349,19 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
     def bottom_bar():
         role = config_manager.active_agent.upper()
         return [
-            ("class:bottom-toolbar", f" quantro 2.0 │ [{role}] │ {config_manager.active_model} │ "
-                                     f"Tokens: {session.total_tokens:,} │ ${session.total_cost_usd:.4f} │ "
-                                     f"Session: {session.id[:8]} ")
+            ("class:bottom-toolbar", f" QUANTRO 2.0 │ [{role}] │ {config_manager.active_model} │ "
+                                     f"Tokens: {session.total_tokens:,} (${session.total_cost_usd:.4f}) │ "
+                                     f"Session: {session.id[:8]} │ Type @file or /help ")
         ]
+
+    def get_prompt_text():
+        role = config_manager.active_agent.upper()
+        return f"\n╭── [{role}] {config_manager.active_model}\n╰─❯ "
 
     while True:
         try:
             user_input = pt_session.prompt(
-                "\n❯ ",
+                get_prompt_text,
                 bottom_toolbar=bottom_bar
             ).strip()
 
