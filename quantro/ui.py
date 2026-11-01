@@ -1,11 +1,12 @@
 """
-Quantro 2.0 OpenCode-Inspired Terminal UI & Mission Control System
-Renders high-impact ASCII banners, multi-panel system dashboards, step timelines,
-colored diff boxes, live token streams, and rich interactive telemetry.
+Quantro 2.0 OpenCode-Inspired Terminal UI & Mission Control Engine
+Delivers a premium, monochromatic, alternate-screen terminal workspace (like OpenCode / Claude Code).
+Features alternate screen buffer switching, crisp executive typography, clean box drawings, and real-time streaming.
 """
 
 import os
 import sys
+import atexit
 import platform
 import subprocess
 from pathlib import Path
@@ -16,40 +17,65 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.table import Table
-from rich.columns import Columns
 from rich.markdown import Markdown
 
 from quantro.agent.roles import ROLE_DEFINITIONS
 
 console = Console(highlight=False)
 
-ASCII_LOGO = r"""
- ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗████████╗██████╗  ██████╗ 
-██╔═══██╗██║   ██║██╔══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗
-██║   ██║██║   ██║███████║██╔██╗ ██║   ██║   ██████╔╝██║   ██║
-██║▄▄ ██║██║   ██║██╔══██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║
-╚██████╔╝╚██████╔╝██║  ██║██║ ╚████║   ██║   ██║  ██║╚██████╔╝
- ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ 
+# Track alternate screen buffer state
+_in_alt_screen = False
+
+
+def enter_alternate_screen():
+    """Switches the terminal to the dedicated alternate screen buffer (clean new page)."""
+    global _in_alt_screen
+    if not _in_alt_screen and sys.stdout.isatty():
+        sys.stdout.write("\033[?1049h\033[2J\033[H")
+        sys.stdout.flush()
+        _in_alt_screen = True
+
+
+def leave_alternate_screen():
+    """Restores the original terminal screen buffer upon exit."""
+    global _in_alt_screen
+    if _in_alt_screen and sys.stdout.isatty():
+        sys.stdout.write("\033[?1049l")
+        sys.stdout.flush()
+        _in_alt_screen = False
+
+
+atexit.register(leave_alternate_screen)
+
+PREMIUM_LOGO = r"""
+ ▄██████  ██    ██   █████   ███    ██ ████████ ██████   ██████ 
+██    ██  ██    ██  ██   ██  ████   ██    ██    ██   ██ ██    ██
+██  ▄ ██  ██    ██  ███████  ██ ██  ██    ██    ██████  ██    ██
+██   ██   ██    ██  ██   ██  ██  ██ ██    ██    ██   ██ ██    ██
+ ██████    ██████   ██   ██  ██   ████    ██    ██   ██  ██████ 
 """
 
 
 def _get_workspace_meta(project_root: Path) -> Dict[str, Any]:
-    """Collects git, file index, stack, and system information for the dashboard."""
-    # Git metadata
+    """Collects git branch, dirty count, tech stack, and file count."""
     branch = "no-git"
-    git_status_str = "clean"
+    git_status = "clean"
     try:
-        res = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, cwd=str(project_root), timeout=2)
+        res = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, cwd=str(project_root), timeout=2
+        )
         if res.returncode == 0 and res.stdout.strip():
             branch = res.stdout.strip()
-            # Check dirty
-            st_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=str(project_root), timeout=2)
+            st_res = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, cwd=str(project_root), timeout=2
+            )
             dirty_count = len([l for l in st_res.stdout.splitlines() if l.strip()])
-            git_status_str = f"±{dirty_count} uncommitted" if dirty_count > 0 else "clean"
+            git_status = f"±{dirty_count} uncommitted" if dirty_count > 0 else "clean"
     except Exception:
         pass
 
-    # File count & stacks
     file_count = 0
     stacks = set()
     try:
@@ -70,21 +96,20 @@ def _get_workspace_meta(project_root: Path) -> Dict[str, Any]:
                     elif ext in (".c", ".cpp", ".h"):
                         stacks.add("C/C++")
                     elif ext in (".html", ".css"):
-                        stacks.add("Web/HTML")
+                        stacks.add("Web")
             if file_count > 500:
                 break
     except Exception:
         pass
 
-    stack_str = ", ".join(sorted(stacks)) if stacks else "General Polyglot"
+    stack_str = ", ".join(sorted(stacks)) if stacks else "Polyglot"
 
     return {
         "branch": branch,
-        "git_status": git_status_str,
+        "git_status": git_status,
         "file_count": file_count,
         "stack": stack_str,
-        "system": f"{platform.system()} {platform.machine()}",
-        "python_ver": platform.python_version()
+        "system": f"{platform.system()} {platform.machine()}"
     }
 
 
@@ -99,153 +124,130 @@ def render_system_launch(
     session_title: str = "New Session"
 ):
     """
-    Renders the grand, full-featured OpenCode 2.0 Mission Control Dashboard.
-    Opens an entire system with ASCII logo, workspace telemetry, AI engine matrix, and hotkeys.
+    Renders an executive, monochromatic, premium OpenCode-style system page.
     """
+    enter_alternate_screen()
+
     project_path = Path(project_dir).resolve()
     meta = _get_workspace_meta(project_path)
 
     role_info = ROLE_DEFINITIONS.get(role, ROLE_DEFINITIONS["build"])
-    badge_color = role_info.get("color", "cyan")
     badge_name = role_info.get("badge", "BUILD")
 
-    # 1. ASCII Art Brand Header
-    logo_lines = ASCII_LOGO.strip().splitlines()
+    # 1. Monochromatic Crisp Logo
+    logo_lines = PREMIUM_LOGO.strip().splitlines()
     styled_logo = Text()
-    colors = ["cyan", "bright_cyan", "blue", "bright_blue", "magenta", "bright_magenta"]
-    for i, line in enumerate(logo_lines):
-        c = colors[i % len(colors)]
-        styled_logo.append(line + "\n", style=f"bold {c}")
+    for line in logo_lines:
+        styled_logo.append("  " + line + "\n", style="bold white")
 
-    styled_logo.append("        ⚡ AUTONOMOUS AI SOFTWARE ENGINEERING ENVIRONMENT · v2.0 ⚡\n", style="bold yellow")
+    styled_logo.append("             QUANTRO 2.0  ·  AUTONOMOUS CODING SYSTEM\n", style="dim white")
     console.print()
     console.print(styled_logo)
 
-    # 2. Three-Column System Dashboard Matrix
-    # Panel 1: Workspace & Git
-    p1_text = Text()
-    p1_text.append("• Directory: ", style="bold white")
-    p1_text.append(f"{project_path.name}\n", style="bold cyan")
-    p1_text.append(f"  {project_path}\n", style="dim")
-    p1_text.append("• Git Branch: ", style="bold white")
-    p1_text.append(f"⎇ {meta['branch']} ", style="bold green")
-    p1_text.append(f"({meta['git_status']})\n", style="dim")
-    p1_text.append("• Tech Stack: ", style="bold white")
-    p1_text.append(f"{meta['stack']}\n", style="white")
-    p1_text.append("• Repository: ", style="bold white")
-    p1_text.append(f"{meta['file_count']} files indexed", style="dim cyan")
-
-    panel1 = Panel(
-        p1_text,
-        title="💻 [bold cyan]Workspace & Repository[/bold cyan]",
-        border_style="cyan",
-        padding=(0, 1)
-    )
-
-    # Panel 2: AI Core Engine
-    p2_text = Text()
-    p2_text.append("• Active Model: ", style="bold white")
-    p2_text.append(f"{model}\n", style="bold yellow")
-    p2_text.append("• Provider: ", style="bold white")
-    p2_text.append(f"{provider.upper()}\n", style="cyan")
-    p2_text.append("• Agent Role: ", style="bold white")
-    p2_text.append(f"[{badge_name}] {role_info['name']}\n", style=f"bold {badge_color}")
-    p2_text.append("• Telemetry: ", style="bold white")
-    p2_text.append(f"SSE Streaming · Reasoning Active\n", style="green")
-    p2_text.append("• Auto-Compact: ", style="bold white")
-    p2_text.append(f"Enabled (>35k tokens)", style="dim")
-
-    panel2 = Panel(
-        p2_text,
-        title="🤖 [bold yellow]AI Brain & Engine[/bold yellow]",
-        border_style="yellow",
-        padding=(0, 1)
-    )
-
-    # Panel 3: Security & Subsystems
-    p3_text = Text()
-    p3_text.append("• Session ID: ", style="bold white")
-    p3_text.append(f"{session_id[:8]} (Persisted)\n", style="bold magenta")
-    p3_text.append("• Tool Suite: ", style="bold white")
-    p3_text.append("13 Autonomous Tools Loaded\n", style="white")
-    p3_text.append("• Security: ", style="bold white")
-    p3_text.append("Granular Whitelist Active\n", style="green")
-    p3_text.append("• Sub-Agents: ", style="bold white")
-    p3_text.append("SubAgentRunner Ready\n", style="dim cyan")
-    p3_text.append("• Token Meter: ", style="bold white")
-    p3_text.append(f"{tokens:,} tokens │ ${cost:.4f}", style="dim green")
-
-    panel3 = Panel(
-        p3_text,
-        title="🛡️ [bold magenta]Security & Subsystems[/bold magenta]",
-        border_style="magenta",
-        padding=(0, 1)
-    )
-
-    # Render 3 panels side by side in table grid
+    # 2. Executive 2-Panel Telemetry Grid
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
     grid.add_column(ratio=1)
-    grid.add_column(ratio=1)
-    grid.add_row(panel1, panel2, panel3)
-    console.print(grid)
 
-    # 3. Interactive Quick Capability Bar (Mission Control Matrix)
-    actions_table = Table.grid(expand=True)
-    actions_table.add_column(ratio=1)
-    actions_table.add_column(ratio=1)
-    actions_table.add_column(ratio=1)
-    actions_table.add_column(ratio=1)
+    # Left: Workspace Card
+    ws_text = Text()
+    ws_text.append("  Project  ", style="dim white")
+    ws_text.append(f"{project_path.name}\n", style="bold white")
+    ws_text.append("  Path     ", style="dim white")
+    ws_text.append(f"{project_path}\n", style="dim")
+    ws_text.append("  Branch   ", style="dim white")
+    ws_text.append(f"{meta['branch']} ", style="white")
+    ws_text.append(f"({meta['git_status']})\n", style="dim")
+    ws_text.append("  Stack    ", style="dim white")
+    ws_text.append(f"{meta['stack']}  ·  {meta['file_count']} files", style="white")
 
-    c1 = Text()
-    c1.append("  /agent   ", style="bold cyan")
-    c1.append("Rol Değiştir (build/plan/review/test)\n", style="dim")
-    c1.append("  /model   ", style="bold cyan")
-    c1.append("LLM Model / Sağlayıcı Seç", style="dim")
-
-    c2 = Text()
-    c2.append("  @<dosya> ", style="bold yellow")
-    c2.append("Bulanık Dosya Bağlama (Fuzzy)\n", style="dim")
-    c2.append("  /commit  ", style="bold yellow")
-    c2.append("Otomatik Git Konvansiyonel Commit", style="dim")
-
-    c3 = Text()
-    c3.append("  /review  ", style="bold magenta")
-    c3.append("Kıdemli Kod İncelemesi (Audit)\n", style="dim")
-    c3.append("  /diff    ", style="bold magenta")
-    c3.append("Git & Ajan Değişikliklerini Gör", style="dim")
-
-    c4 = Text()
-    c4.append("  /session ", style="bold green")
-    c4.append("Oturumları Listele / Sürdür\n", style="dim")
-    c4.append("  /undo    ", style="bold green")
-    c4.append("Son Dosya İşlemini Geri Al", style="dim")
-
-    actions_table.add_row(c1, c2, c3, c4)
-
-    actions_panel = Panel(
-        actions_table,
-        title="⚡ [bold white]Hızlı Eylemler ve Sistem Komutları[/bold white]",
+    panel_ws = Panel(
+        ws_text,
+        title="[bold white]WORKSPACE[/bold white]",
+        title_align="left",
         border_style="dim white",
         padding=(0, 1)
     )
-    console.print(actions_panel)
+
+    # Right: Engine Card
+    eng_text = Text()
+    eng_text.append("  Model    ", style="dim white")
+    eng_text.append(f"{model}\n", style="bold white")
+    eng_text.append("  Provider ", style="dim white")
+    eng_text.append(f"{provider.upper()} (SSE Stream)\n", style="white")
+    eng_text.append("  Mode     ", style="dim white")
+    eng_text.append(f"[{badge_name}] {role_info['name']}\n", style="bold white")
+    eng_text.append("  Session  ", style="dim white")
+    eng_text.append(f"{session_id[:8]}  ·  {tokens:,} tokens (${cost:.4f})", style="white")
+
+    panel_eng = Panel(
+        eng_text,
+        title="[bold white]ENGINE & SESSION[/bold white]",
+        title_align="left",
+        border_style="dim white",
+        padding=(0, 1)
+    )
+
+    grid.add_row(panel_ws, panel_eng)
+    console.print(grid)
+
+    # 3. Clean Shortcuts & Hotkeys Card
+    cmd_table = Table.grid(expand=True)
+    cmd_table.add_column(width=16)
+    cmd_table.add_column(ratio=1)
+    cmd_table.add_column(width=16)
+    cmd_table.add_column(ratio=1)
+
+    cmd_table.add_row(
+        Text("  @<file>", style="bold white"),
+        Text("Fuzzy file mention & auto context", style="dim"),
+        Text("  /agent [role]", style="bold white"),
+        Text("Switch mode (build/plan/review/test)", style="dim")
+    )
+    cmd_table.add_row(
+        Text("  /commit", style="bold white"),
+        Text("Auto-generate git conventional commit", style="dim"),
+        Text("  /model [name]", style="bold white"),
+        Text("Change active model/provider", style="dim")
+    )
+    cmd_table.add_row(
+        Text("  /review", style="bold white"),
+        Text("Run automated senior code review", style="dim"),
+        Text("  /diff", style="bold white"),
+        Text("Inspect uncommitted git working tree", style="dim")
+    )
+    cmd_table.add_row(
+        Text("  /session", style="bold white"),
+        Text("Manage, list, or resume sessions", style="dim"),
+        Text("  /undo", style="bold white"),
+        Text("Revert last file modification", style="dim")
+    )
+
+    cmd_panel = Panel(
+        cmd_table,
+        title="[bold white]COMMANDS & HOTKEYS[/bold white]",
+        title_align="left",
+        border_style="dim white",
+        padding=(0, 1)
+    )
+    console.print(cmd_panel)
     console.print()
 
 
 def render_step_header(step_idx: int, description: str = ""):
     """Prints start of an execution step."""
     t = Text()
-    t.append(f"┌─ Step {step_idx}", style="bold cyan")
+    t.append(f"┌─ Step {step_idx}", style="bold white")
     if description:
-        t.append(f" · {description}", style="bold white")
+        t.append(f" · {description}", style="dim white")
     console.print(t)
 
 
 def render_tool_call(tool_name: str, args_summary: str):
     """Prints a tool call item inside the timeline."""
     t = Text()
-    t.append("│ ⚡ ", style="bold yellow")
+    t.append("│ ", style="dim white")
+    t.append("● ", style="white")
     t.append(f"{tool_name}", style="bold white")
     t.append(f"({args_summary})", style="dim")
     console.print(t)
@@ -254,29 +256,29 @@ def render_tool_call(tool_name: str, args_summary: str):
 def render_tool_result(result_text: str, success: bool = True):
     """Prints tool result line."""
     t = Text()
-    t.append("│   ↳ ", style="dim cyan")
-    t.append(result_text, style="green" if success else "red")
+    t.append("│   ↳ ", style="dim white")
+    t.append(result_text, style="white" if success else "red")
     console.print(t)
 
 
 def render_step_footer(status: str = "Completed"):
     """Prints step conclusion line."""
     t = Text()
-    t.append(f"└─ ✓ {status}\n", style="dim cyan")
+    t.append(f"└─ ✓ {status}\n", style="dim white")
     console.print(t)
 
 
 def render_diff(diff_content: str, filename: str = "", additions: int = 0, deletions: int = 0):
-    """Renders OpenCode 2.0 unified diff panel with additions/deletions badge."""
+    """Renders unified diff panel with clean monochromatic borders."""
     if not diff_content.strip():
         return
 
     colored_text = Text()
     for line in diff_content.splitlines():
         if line.startswith("+++") or line.startswith("---"):
-            colored_text.append(line + "\n", style="bold yellow")
+            colored_text.append(line + "\n", style="bold white")
         elif line.startswith("@@"):
-            colored_text.append(line + "\n", style="bold cyan")
+            colored_text.append(line + "\n", style="dim cyan")
         elif line.startswith("+"):
             colored_text.append(line + "\n", style="green")
         elif line.startswith("-"):
@@ -287,13 +289,13 @@ def render_diff(diff_content: str, filename: str = "", additions: int = 0, delet
     title = Text()
     title.append(f"Diff: {filename} " if filename else "Code Diff ")
     if additions or deletions:
-        title.append(f"(+{additions} -{deletions})", style="bold yellow")
+        title.append(f"(+{additions} -{deletions})", style="bold white")
 
     panel = Panel(
         colored_text,
         title=title,
         title_align="left",
-        border_style="dim green",
+        border_style="dim white",
         padding=(0, 1)
     )
     console.print(panel)
@@ -306,9 +308,9 @@ def render_reasoning(thought: str):
     text = Text(thought.strip(), style="italic dim white")
     panel = Panel(
         text,
-        title="💭 Reasoning",
+        title="Reasoning",
         title_align="left",
-        border_style="dim blue",
+        border_style="dim white",
         padding=(0, 1)
     )
     console.print(panel)
@@ -324,7 +326,7 @@ def stream_token(token: str, is_reasoning: bool = False):
 
 
 def stream_start_reasoning():
-    console.print("[dim cyan]💭 Düşünülüyor...[/dim cyan]")
+    console.print("[dim]Thinking...[/dim]")
 
 
 def stream_end():
@@ -333,7 +335,7 @@ def stream_end():
 
 
 def render_interrupted():
-    console.print("\n[bold yellow]⚡ İşlem kullanıcı tarafından durduruldu (Ctrl+C)[/bold yellow]\n")
+    console.print("\n[dim](Cancelled via Ctrl+C)[/dim]\n")
 
 
 def render_markdown(content: str):
@@ -348,13 +350,13 @@ def render_markdown(content: str):
 
 def render_sessions_table(sessions: List[Any]):
     """Renders session list table for 'quantro session list'."""
-    table = Table(title="Quantro Sessions", border_style="cyan")
-    table.add_column("ID", style="bold cyan", width=10)
-    table.add_column("Title", style="bold white", width=35)
-    table.add_column("Model", style="yellow")
-    table.add_column("Tokens", justify="right", style="green")
-    table.add_column("Cost", justify="right", style="green")
-    table.add_column("Turns", justify="right", style="white")
+    table = Table(title="Sessions", border_style="dim white")
+    table.add_column("ID", style="bold white", width=10)
+    table.add_column("Title", style="white", width=35)
+    table.add_column("Model", style="dim white")
+    table.add_column("Tokens", justify="right", style="white")
+    table.add_column("Cost", justify="right", style="white")
+    table.add_column("Turns", justify="right", style="dim")
 
     for s in sessions:
         table.add_row(
@@ -373,10 +375,10 @@ def render_sessions_table(sessions: List[Any]):
 
 def render_models_table(providers: Dict[str, Any], active_model: str):
     """Renders supported models for 'quantro models'."""
-    table = Table(title="Available LLM Providers & Recommended Models", border_style="cyan")
-    table.add_column("Provider", style="bold cyan")
-    table.add_column("Default Model", style="yellow")
-    table.add_column("Recommended Models", style="white")
+    table = Table(title="LLM Providers & Models", border_style="dim white")
+    table.add_column("Provider", style="bold white")
+    table.add_column("Default Model", style="white")
+    table.add_column("Recommended Models", style="dim")
 
     for p_id, p_info in providers.items():
         recs = ", ".join(p_info.get("recommended_models", []))
@@ -393,9 +395,9 @@ def render_models_table(providers: Dict[str, Any], active_model: str):
 
 def render_stats_table(stats_data: Dict[str, Any]):
     """Renders analytics summary for 'quantro stats'."""
-    table = Table(title="Quantro Usage & Telemetry Stats", border_style="magenta")
+    table = Table(title="Usage & Telemetry", border_style="dim white")
     table.add_column("Metric", style="bold white")
-    table.add_column("Value", style="cyan")
+    table.add_column("Value", style="white")
 
     for k, v in stats_data.items():
         table.add_row(k, str(v))
@@ -407,8 +409,8 @@ def render_stats_table(stats_data: Dict[str, Any]):
 
 def render_help():
     """Renders slash commands and CLI guidance."""
-    table = Table(title="Quantro 2.0 Commands & Subsystems", border_style="cyan")
-    table.add_column("Command / Hotkey", style="bold magenta", width=22)
+    table = Table(title="Quantro 2.0 Commands", border_style="dim white")
+    table.add_column("Command / Hotkey", style="bold white", width=22)
     table.add_column("Description", style="white")
 
     table.add_row("/help", "Show all interactive slash commands")
@@ -434,5 +436,5 @@ def render_help():
 
 @contextmanager
 def spinner(message: str):
-    with console.status(f"[bold cyan]{message}[/bold cyan]", spinner="dots") as status:
+    with console.status(f"[dim white]{message}[/dim white]", spinner="dots") as status:
         yield status

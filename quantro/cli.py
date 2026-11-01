@@ -202,8 +202,6 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
     args = parts[1:]
 
     if cmd in ("/exit", "/quit"):
-        session_store.save(session)
-        ui.console.print("\n[dim]Quantro 2.0 oturumu kaydedildi ve sonlandırıldı. Görüşmek üzere![/dim]\n")
         return False
 
     elif cmd == "/help":
@@ -358,36 +356,39 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
         role = config_manager.active_agent.upper()
         return f"\n╭── [{role}] {config_manager.active_model}\n╰─❯ "
 
-    while True:
-        try:
-            user_input = pt_session.prompt(
-                get_prompt_text,
-                bottom_toolbar=bottom_bar
-            ).strip()
+    try:
+        while True:
+            try:
+                user_input = pt_session.prompt(
+                    get_prompt_text,
+                    bottom_toolbar=bottom_bar
+                ).strip()
 
-            if not user_input:
+                if not user_input:
+                    continue
+
+                if user_input.startswith("/"):
+                    keep_going = handle_slash_command(user_input, session, engine)
+                    if not keep_going:
+                        break
+                    continue
+
+                # Process @file mentions and expand into prompt
+                expanded_prompt = expand_file_mentions(user_input, project_root)
+
+                # Run agent turn
+                engine.run(expanded_prompt)
+
+            except KeyboardInterrupt:
+                # Ctrl+C at prompt resets current line, does not crash REPL
+                ui.console.print("\n[dim](İptal edildi, yeni komut girin)[/dim]")
                 continue
-
-            if user_input.startswith("/"):
-                keep_going = handle_slash_command(user_input, session, engine)
-                if not keep_going:
-                    break
-                continue
-
-            # Process @file mentions and expand into prompt
-            expanded_prompt = expand_file_mentions(user_input, project_root)
-
-            # Run agent turn
-            engine.run(expanded_prompt)
-
-        except KeyboardInterrupt:
-            # Ctrl+C at prompt resets current line, does not crash REPL
-            ui.console.print("\n[dim](İptal edildi, yeni komut girin)[/dim]")
-            continue
-        except EOFError:
-            session_store.save(session)
-            ui.console.print("\n[dim]Quantro oturumu kaydedildi ve kapatıldı.[/dim]\n")
-            break
+            except EOFError:
+                break
+    finally:
+        session_store.save(session)
+        ui.leave_alternate_screen()
+        ui.console.print("\n[dim]Quantro oturumu kaydedildi ve kapatıldı.[/dim]\n")
 
 
 def main():
