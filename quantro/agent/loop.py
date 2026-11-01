@@ -135,7 +135,9 @@ class AgentEngine:
                                 if c_chunk:
                                     if has_streamed_reasoning and not has_streamed_content:
                                         ui.stream_end()
-                                    has_streamed_content = True
+                                    if not has_streamed_content:
+                                        has_streamed_content = True
+                                        ui.console.print(f"\n[bold white]Quantro[/bold white] [dim]· {active_model}[/dim]\n")
                                     accumulated_content += c_chunk
                                     ui.stream_token(c_chunk, is_reasoning=False)
 

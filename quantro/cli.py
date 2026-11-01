@@ -215,9 +215,16 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
 
     elif cmd == "/agent":
         if not args:
-            ui.console.print(f"\n[bold]Aktif Rol:[/bold] [cyan]{config_manager.active_agent}[/cyan]")
-            ui.console.print("Kullanılabilir Roller: [bold cyan]build[/bold cyan], [bold yellow]plan[/bold yellow], [bold magenta]review[/bold magenta], [bold green]test[/bold green]")
-            ui.console.print("Rol değiştirmek için: [magenta]/agent <rol>[/magenta]\n")
+            if sys.stdout.isatty():
+                selected = ui.open_agent_dialog(config_manager.active_agent)
+                if selected and selected in ROLE_DEFINITIONS:
+                    config_manager.active_agent = selected
+                    badge = ROLE_DEFINITIONS[selected]["badge"]
+                    ui.console.print(f"[bold green]✓ Ajan modu değiştirildi:[/bold green] [{badge}] ({ROLE_DEFINITIONS[selected]['name']})")
+            else:
+                ui.console.print(f"\n[bold]Aktif Rol:[/bold] [cyan]{config_manager.active_agent}[/cyan]")
+                ui.console.print("Kullanılabilir Roller: [bold cyan]build[/bold cyan], [bold yellow]plan[/bold yellow], [bold magenta]review[/bold magenta], [bold green]test[/bold green]")
+                ui.console.print("Rol değiştirmek için: [magenta]/agent <rol>[/magenta]\n")
         else:
             role = args[0].lower()
             if role in ROLE_DEFINITIONS:
@@ -229,7 +236,24 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
 
     elif cmd == "/model":
         if not args:
-            ui.render_models_table(DEFAULT_PROVIDERS, config_manager.active_model)
+            if sys.stdout.isatty():
+                selected = ui.open_model_dialog(config_manager.active_model)
+                if selected:
+                    config_manager.active_model = selected
+                    if "deepseek" in selected and "/" not in selected:
+                        config_manager.active_provider = "deepseek"
+                    elif "gemini" in selected and "/" not in selected:
+                        config_manager.active_provider = "gemini"
+                    elif selected.startswith("gpt-") or selected.startswith("o"):
+                        config_manager.active_provider = "openai"
+                    elif "/" in selected:
+                        config_manager.active_provider = "openrouter"
+                    session.model = selected
+                    session.provider = config_manager.active_provider
+                    session_store.save(session)
+                    ui.console.print(f"[bold green]✓ Aktif model:[/bold green] [cyan]{selected}[/cyan] ({config_manager.active_provider})")
+            else:
+                ui.render_models_table(DEFAULT_PROVIDERS, config_manager.active_model)
         else:
             new_model = args[0]
             config_manager.active_model = new_model
@@ -247,19 +271,44 @@ def handle_slash_command(cmd_line: str, session: Session, engine: AgentEngine) -
             ui.console.print(f"[bold green]✓ Aktif model:[/bold green] [cyan]{new_model}[/cyan] ({config_manager.active_provider})")
 
     elif cmd == "/session":
-        if not args or args[0] == "list":
+        if not args:
+            sessions = session_store.list_all()
+            if sys.stdout.isatty() and sessions:
+                selected_id = ui.open_session_dialog(sessions)
+                if selected_id:
+                    loaded = session_store.load(selected_id)
+                    if loaded:
+                        session.id = loaded.id
+                        session.title = loaded.title
+                        session.messages = loaded.messages
+                        session.total_cost_usd = loaded.total_cost_usd
+                        session.model = loaded.model
+                        session.provider = loaded.provider
+                        ui.console.print(f"[bold green]✓ Oturuma geçildi:[/bold green] {loaded.id} - '{loaded.title}'")
+            else:
+                ui.render_sessions_table(sessions)
+        elif args[0] == "list":
             sessions = session_store.list_all()
             ui.render_sessions_table(sessions)
         elif args[0] == "new":
             new_s = Session(project_dir=str(Path.cwd().resolve()))
             session_store.save(new_s)
-            ui.console.print(f"[bold green]✓ Yeni oturum başlatıldı:[/bold green] {new_s.id}")
-            ui.console.print("Bu oturuma geçmek için: [dim]quantro -s " + new_s.id + "[/dim]")
+            session.id = new_s.id
+            session.title = new_s.title
+            session.messages = []
+            session.total_cost_usd = 0.0
+            ui.console.print(f"[bold green]✓ Yeni oturuma geçildi:[/bold green] {new_s.id}")
         else:
             target_id = args[0]
             loaded = session_store.load(target_id)
             if loaded:
-                ui.console.print(f"[bold green]✓ Oturum bulundu:[/bold green] {loaded.id} - '{loaded.title}'")
+                session.id = loaded.id
+                session.title = loaded.title
+                session.messages = loaded.messages
+                session.total_cost_usd = loaded.total_cost_usd
+                session.model = loaded.model
+                session.provider = loaded.provider
+                ui.console.print(f"[bold green]✓ Oturuma geçildi:[/bold green] {loaded.id} - '{loaded.title}'")
             else:
                 ui.console.print(f"[bold red]Oturum bulunamadı:[/bold red] {target_id}")
 
@@ -374,6 +423,9 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
 
                 # Process @file mentions and expand into prompt
                 expanded_prompt = expand_file_mentions(user_input, project_root)
+
+                # Render user message card
+                ui.render_user_message(user_input)
 
                 # Run agent turn
                 engine.run(expanded_prompt)

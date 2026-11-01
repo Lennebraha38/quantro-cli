@@ -1,7 +1,7 @@
 """
 Quantro 2.0 OpenCode-Authentic Terminal UI Engine
 Faithfully replicates OpenCode's iconic block font, centered layout, metadata card,
-step timelines, unified diff panels, and alternate-screen buffer workspace.
+interactive dialogs, conversational message cards, and alternate-screen buffer workspace.
 """
 
 import os
@@ -18,6 +18,9 @@ from rich.syntax import Syntax
 from rich.text import Text
 from rich.table import Table
 from rich.markdown import Markdown
+
+from prompt_toolkit.styles import Style
+from prompt_toolkit.shortcuts import radiolist_dialog, input_dialog
 
 from quantro.agent.roles import ROLE_DEFINITIONS
 
@@ -53,6 +56,18 @@ OPENCODE_LOGO = [
     "█  █ █  █ █▄▄█ █  █  █  █▄▄▀ █  █",
     "▀▀▀█ ▀▀▀▀ ▀  ▀ ▀  ▀  ▀  ▀  ▀ ▀▀▀▀"
 ]
+
+OPENCODE_DIALOG_STYLE = Style.from_dict({
+    "dialog": "bg:#09090b",
+    "dialog.body": "bg:#18181b #fafafa",
+    "dialog.body label": "#fafafa",
+    "dialog shadow": "bg:#000000",
+    "dialog.border": "#27272a",
+    "button": "bg:#27272a #fafafa",
+    "button.focused": "bg:#3f3f46 #ffffff bold",
+    "radio-selected": "#38bdf8 bold",
+    "radio-checked": "#38bdf8 bold",
+})
 
 
 def _get_workspace_meta(project_root: Path) -> Dict[str, Any]:
@@ -132,12 +147,13 @@ def render_system_launch(
     # 2. OpenCode Main Environment Card
     card_content = Text()
     card_content.append("  Ask a question, edit code, or run terminal commands...\n\n", style="dim white")
-    card_content.append("  ────────────────────────────────────────────────────────────────\n", style="dim white")
+    card_content.append("  ────────────────────────────────────────────────────────\n", style="dim white")
     card_content.append(f"  {meta['display_path']}", style="bold white")
     if meta['branch'] != "no-git":
         card_content.append(f":{meta['branch']}", style="white")
-    card_content.append("  ·  ⊙ 13 Tools", style="white")
-    card_content.append(f"  ·  {model} [{badge}]\n", style="bold white")
+    card_content.append(" · ⊙ 13 Tools", style="white")
+    model_short = model.split("/")[-1] if "/" in model else model
+    card_content.append(f" · {model_short} [{badge}]\n", style="bold white")
 
     panel = Panel(
         card_content,
@@ -163,6 +179,36 @@ def render_system_launch(
 
     console.print(shortcuts)
     console.print("[dim]  Tip: Press @ to search and reference project files directly into context.[/dim]\n")
+
+
+def render_user_message(content: str):
+    """Renders user message in clean OpenCode card."""
+    text = Text(content.strip(), style="white")
+    panel = Panel(
+        text,
+        title="[bold white]You[/bold white]",
+        title_align="left",
+        border_style="dim white",
+        padding=(0, 1)
+    )
+    console.print(panel)
+
+
+def render_assistant_card(content: str, model: str):
+    """Renders final assistant response in an OpenCode card."""
+    if not content.strip():
+        return
+    md = Markdown(content)
+    panel = Panel(
+        md,
+        title=f"[bold white]Quantro[/bold white] [dim]· {model}[/dim]",
+        title_align="left",
+        border_style="dim white",
+        padding=(0, 1)
+    )
+    console.print()
+    console.print(panel)
+    console.print()
 
 
 def render_step_header(step_idx: int, description: str = ""):
@@ -279,6 +325,91 @@ def render_markdown(content: str):
     console.print()
 
 
+# --- OpenCode-Style Interactive Dialog Selectors ---
+
+def open_agent_dialog(current_agent: str) -> Optional[str]:
+    """Opens OpenCode-authentic interactive agent selector dialog."""
+    if not sys.stdout.isatty():
+        return None
+
+    values = [
+        ("build", "build  — Autonomous feature development, refactoring, and bug fixes"),
+        ("plan",  "plan   — Architectural planning and codebase inspection without edits"),
+        ("review","review — Critical code audits, security analysis, and diff review"),
+        ("test",  "test   — Test suite execution, QA assertions, and test generation")
+    ]
+    try:
+        choice = radiolist_dialog(
+            title="Select Agent Role",
+            text="Choose active operational role for Quantro:",
+            values=values,
+            default=current_agent,
+            style=OPENCODE_DIALOG_STYLE
+        ).run()
+        return choice
+    except Exception:
+        return None
+
+
+def open_model_dialog(current_model: str) -> Optional[str]:
+    """Opens OpenCode-authentic interactive model selector dialog."""
+    if not sys.stdout.isatty():
+        return None
+
+    values = [
+        ("deepseek/deepseek-chat", "deepseek/deepseek-chat (OpenRouter - Default)"),
+        ("anthropic/claude-3.5-sonnet", "anthropic/claude-3.5-sonnet (OpenRouter)"),
+        ("openai/gpt-4o", "openai/gpt-4o (OpenRouter)"),
+        ("google/gemini-2.5-pro", "google/gemini-2.5-pro (OpenRouter)"),
+        ("gemini-2.5-pro", "gemini-2.5-pro (Google Gemini Official)"),
+        ("deepseek-chat", "deepseek-chat (DeepSeek Official)"),
+        ("gpt-4o", "gpt-4o (OpenAI Official)"),
+        ("custom", "Enter custom model name...")
+    ]
+    try:
+        choice = radiolist_dialog(
+            title="Select Model & Provider",
+            text="Choose LLM model to power Quantro:",
+            values=values,
+            default=current_model if any(v[0] == current_model for v in values) else "deepseek/deepseek-chat",
+            style=OPENCODE_DIALOG_STYLE
+        ).run()
+
+        if choice == "custom":
+            custom_name = input_dialog(
+                title="Custom Model",
+                text="Enter model identifier (e.g. meta-llama/llama-3.3-70b-instruct):",
+                style=OPENCODE_DIALOG_STYLE
+            ).run()
+            return custom_name.strip() if custom_name else None
+
+        return choice
+    except Exception:
+        return None
+
+
+def open_session_dialog(sessions: List[Any]) -> Optional[str]:
+    """Opens interactive session selector dialog."""
+    if not sys.stdout.isatty() or not sessions:
+        return None
+
+    values = [
+        (s.id, f"{s.id} · {s.title[:35]} ({s.turn_count} turns, ${s.total_cost_usd:.4f})")
+        for s in sessions[:15]
+    ]
+    try:
+        choice = radiolist_dialog(
+            title="Select Session to Resume",
+            text="Choose a persisted session:",
+            values=values,
+            default=sessions[0].id,
+            style=OPENCODE_DIALOG_STYLE
+        ).run()
+        return choice
+    except Exception:
+        return None
+
+
 def render_sessions_table(sessions: List[Any]):
     """Renders session list table for 'quantro session list'."""
     table = Table(title="Sessions", border_style="dim white")
@@ -346,11 +477,11 @@ def render_help():
 
     table.add_row("/help", "Show all interactive slash commands")
     table.add_row("@<file>", "Fuzzy file reference (e.g. @app.py) auto-completes and injects file")
-    table.add_row("/agent [role]", "Switch role: build (coder), plan (architect), review (audit), test (QA)")
-    table.add_row("/model [name]", "View or switch active LLM model/provider")
+    table.add_row("/agent", "Open interactive agent role selector (build/plan/review/test)")
+    table.add_row("/model", "Open interactive LLM model & provider selector")
     table.add_row("/commit", "Analyze git diff and generate conventional commit automatically")
     table.add_row("/review", "Audit current git changes and run Senior Code Review")
-    table.add_row("/session [list|new|<id>]", "Manage, list, or resume sessions")
+    table.add_row("/session", "Open interactive session manager to list or resume")
     table.add_row("/skills", "List discovered repository and user skills")
     table.add_row("/init", "Scan project and generate/update QUANTRO.md")
     table.add_row("/diff", "Show git diff or last agent file change")
