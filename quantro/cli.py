@@ -42,8 +42,8 @@ SLASH_COMMANDS = [
 ]
 
 prompt_style = Style.from_dict({
-    "prompt": "ansicyan bold",
-    "bottom-toolbar": "bg:#0f172a #94a3b8",
+    "prompt": "bold #ffffff",
+    "bottom-toolbar": "bg:#18181b #a1a1aa",
 })
 
 
@@ -345,16 +345,15 @@ def run_interactive_repl(session: Session, auto_approve: bool = False):
     pt_session = PromptSession(completer=completer, style=prompt_style)
 
     def bottom_bar():
-        role = config_manager.active_agent.upper()
+        role = config_manager.active_agent.lower()
+        meta = ui._get_workspace_meta(project_root)
+        branch_str = f" : {meta['branch']}" if meta['branch'] != "no-git" else ""
         return [
-            ("class:bottom-toolbar", f" QUANTRO 2.0 │ [{role}] │ {config_manager.active_model} │ "
-                                     f"Tokens: {session.total_tokens:,} (${session.total_cost_usd:.4f}) │ "
-                                     f"Session: {session.id[:8]} │ Type @file or /help ")
+            ("class:bottom-toolbar", f" {meta['display_path']}{branch_str} │ ⊙ 13 Tools │ {config_manager.active_model} [{role}] │ /help │ ^C: Cancel ")
         ]
 
     def get_prompt_text():
-        role = config_manager.active_agent.upper()
-        return f"\n╭── [{role}] {config_manager.active_model}\n╰─❯ "
+        return "\n❯ "
 
     try:
         while True:

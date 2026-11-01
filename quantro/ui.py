@@ -1,7 +1,7 @@
 """
-Quantro 2.0 OpenCode-Inspired Terminal UI & Mission Control Engine
-Delivers a premium, monochromatic, alternate-screen terminal workspace (like OpenCode / Claude Code).
-Features alternate screen buffer switching, crisp executive typography, clean box drawings, and real-time streaming.
+Quantro 2.0 OpenCode-Authentic Terminal UI Engine
+Faithfully replicates OpenCode's iconic block font, centered layout, metadata card,
+step timelines, unified diff panels, and alternate-screen buffer workspace.
 """
 
 import os
@@ -47,17 +47,16 @@ def leave_alternate_screen():
 
 atexit.register(leave_alternate_screen)
 
-PREMIUM_LOGO = r"""
- ▄██████  ██    ██   █████   ███    ██ ████████ ██████   ██████ 
-██    ██  ██    ██  ██   ██  ████   ██    ██    ██   ██ ██    ██
-██  ▄ ██  ██    ██  ███████  ██ ██  ██    ██    ██████  ██    ██
-██   ██   ██    ██  ██   ██  ██  ██ ██    ██    ██   ██ ██    ██
- ██████    ██████   ██   ██  ██   ████    ██    ██   ██  ██████ 
-"""
+# Authentic OpenCode block font logo for QUANTRO
+OPENCODE_LOGO = [
+    "█▀▀█ █  █ █▀▀█ █▀▀▄ ▀█▀ █▀▀█ █▀▀█",
+    "█  █ █  █ █▄▄█ █  █  █  █▄▄▀ █  █",
+    "▀▀▀█ ▀▀▀▀ ▀  ▀ ▀  ▀  ▀  ▀  ▀ ▀▀▀▀"
+]
 
 
 def _get_workspace_meta(project_root: Path) -> Dict[str, Any]:
-    """Collects git branch, dirty count, tech stack, and file count."""
+    """Collects git branch, dirty status, file count, and stack."""
     branch = "no-git"
     git_status = "clean"
     try:
@@ -72,44 +71,31 @@ def _get_workspace_meta(project_root: Path) -> Dict[str, Any]:
                 capture_output=True, text=True, cwd=str(project_root), timeout=2
             )
             dirty_count = len([l for l in st_res.stdout.splitlines() if l.strip()])
-            git_status = f"±{dirty_count} uncommitted" if dirty_count > 0 else "clean"
+            git_status = f"±{dirty_count}" if dirty_count > 0 else "clean"
     except Exception:
         pass
 
     file_count = 0
-    stacks = set()
     try:
         for root, dirs, files in os.walk(project_root):
             dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".venv", ".cache"} and not d.startswith(".")]
-            for f in files:
-                if not f.startswith("."):
-                    file_count += 1
-                    ext = Path(f).suffix.lower()
-                    if ext in (".py",):
-                        stacks.add("Python")
-                    elif ext in (".js", ".jsx", ".ts", ".tsx"):
-                        stacks.add("TypeScript/JS")
-                    elif ext in (".rs",):
-                        stacks.add("Rust")
-                    elif ext in (".go",):
-                        stacks.add("Go")
-                    elif ext in (".c", ".cpp", ".h"):
-                        stacks.add("C/C++")
-                    elif ext in (".html", ".css"):
-                        stacks.add("Web")
-            if file_count > 500:
+            file_count += len([f for f in files if not f.startswith(".")])
+            if file_count > 300:
                 break
     except Exception:
         pass
 
-    stack_str = ", ".join(sorted(stacks)) if stacks else "Polyglot"
+    # Abbreviate path with ~
+    home_dir = str(Path.home())
+    display_path = str(project_root)
+    if display_path.startswith(home_dir):
+        display_path = "~" + display_path[len(home_dir):]
 
     return {
+        "display_path": display_path,
         "branch": branch,
         "git_status": git_status,
-        "file_count": file_count,
-        "stack": stack_str,
-        "system": f"{platform.system()} {platform.machine()}"
+        "file_count": file_count
     }
 
 
@@ -124,120 +110,65 @@ def render_system_launch(
     session_title: str = "New Session"
 ):
     """
-    Renders an executive, monochromatic, premium OpenCode-style system page.
+    Renders OpenCode's signature centered home screen inside alternate screen buffer.
     """
     enter_alternate_screen()
 
     project_path = Path(project_dir).resolve()
     meta = _get_workspace_meta(project_path)
-
     role_info = ROLE_DEFINITIONS.get(role, ROLE_DEFINITIONS["build"])
-    badge_name = role_info.get("badge", "BUILD")
+    badge = role_info.get("badge", "BUILD").lower()
 
-    # 1. Monochromatic Crisp Logo
-    logo_lines = PREMIUM_LOGO.strip().splitlines()
-    styled_logo = Text()
-    for line in logo_lines:
-        styled_logo.append("  " + line + "\n", style="bold white")
-
-    styled_logo.append("             QUANTRO 2.0  ·  AUTONOMOUS CODING SYSTEM\n", style="dim white")
+    # Top spacing
     console.print()
-    console.print(styled_logo)
 
-    # 2. Executive 2-Panel Telemetry Grid
-    grid = Table.grid(expand=True)
-    grid.add_column(ratio=1)
-    grid.add_column(ratio=1)
+    # 1. OpenCode-style Block Logo (Centered)
+    logo_text = Text()
+    for line in OPENCODE_LOGO:
+        logo_text.append(f"          {line}\n", style="bold white")
+    logo_text.append("                  q u a n t r o   v 2 . 0\n", style="dim white")
+    console.print(logo_text)
 
-    # Left: Workspace Card
-    ws_text = Text()
-    ws_text.append("  Project  ", style="dim white")
-    ws_text.append(f"{project_path.name}\n", style="bold white")
-    ws_text.append("  Path     ", style="dim white")
-    ws_text.append(f"{project_path}\n", style="dim")
-    ws_text.append("  Branch   ", style="dim white")
-    ws_text.append(f"{meta['branch']} ", style="white")
-    ws_text.append(f"({meta['git_status']})\n", style="dim")
-    ws_text.append("  Stack    ", style="dim white")
-    ws_text.append(f"{meta['stack']}  ·  {meta['file_count']} files", style="white")
+    # 2. OpenCode Main Environment Card
+    card_content = Text()
+    card_content.append("  Ask a question, edit code, or run terminal commands...\n\n", style="dim white")
+    card_content.append("  ────────────────────────────────────────────────────────────────\n", style="dim white")
+    card_content.append(f"  {meta['display_path']}", style="bold white")
+    if meta['branch'] != "no-git":
+        card_content.append(f":{meta['branch']}", style="white")
+    card_content.append("  ·  ⊙ 13 Tools", style="white")
+    card_content.append(f"  ·  {model} [{badge}]\n", style="bold white")
 
-    panel_ws = Panel(
-        ws_text,
-        title="[bold white]WORKSPACE[/bold white]",
-        title_align="left",
+    panel = Panel(
+        card_content,
         border_style="dim white",
         padding=(0, 1)
     )
+    console.print(panel)
 
-    # Right: Engine Card
-    eng_text = Text()
-    eng_text.append("  Model    ", style="dim white")
-    eng_text.append(f"{model}\n", style="bold white")
-    eng_text.append("  Provider ", style="dim white")
-    eng_text.append(f"{provider.upper()} (SSE Stream)\n", style="white")
-    eng_text.append("  Mode     ", style="dim white")
-    eng_text.append(f"[{badge_name}] {role_info['name']}\n", style="bold white")
-    eng_text.append("  Session  ", style="dim white")
-    eng_text.append(f"{session_id[:8]}  ·  {tokens:,} tokens (${cost:.4f})", style="white")
+    # 3. OpenCode Shortcuts & Tips Footer
+    shortcuts = Text()
+    shortcuts.append("  Tab ", style="bold white")
+    shortcuts.append("Complete   ", style="dim")
+    shortcuts.append("/ ", style="bold white")
+    shortcuts.append("Commands   ", style="dim")
+    shortcuts.append("@ ", style="bold white")
+    shortcuts.append("Mention file   ", style="dim")
+    shortcuts.append("/commit ", style="bold white")
+    shortcuts.append("Git commit   ", style="dim")
+    shortcuts.append("/review ", style="bold white")
+    shortcuts.append("Review   ", style="dim")
+    shortcuts.append("^C ", style="bold white")
+    shortcuts.append("Cancel\n", style="dim")
 
-    panel_eng = Panel(
-        eng_text,
-        title="[bold white]ENGINE & SESSION[/bold white]",
-        title_align="left",
-        border_style="dim white",
-        padding=(0, 1)
-    )
-
-    grid.add_row(panel_ws, panel_eng)
-    console.print(grid)
-
-    # 3. Clean Shortcuts & Hotkeys Card
-    cmd_table = Table.grid(expand=True)
-    cmd_table.add_column(width=16)
-    cmd_table.add_column(ratio=1)
-    cmd_table.add_column(width=16)
-    cmd_table.add_column(ratio=1)
-
-    cmd_table.add_row(
-        Text("  @<file>", style="bold white"),
-        Text("Fuzzy file mention & auto context", style="dim"),
-        Text("  /agent [role]", style="bold white"),
-        Text("Switch mode (build/plan/review/test)", style="dim")
-    )
-    cmd_table.add_row(
-        Text("  /commit", style="bold white"),
-        Text("Auto-generate git conventional commit", style="dim"),
-        Text("  /model [name]", style="bold white"),
-        Text("Change active model/provider", style="dim")
-    )
-    cmd_table.add_row(
-        Text("  /review", style="bold white"),
-        Text("Run automated senior code review", style="dim"),
-        Text("  /diff", style="bold white"),
-        Text("Inspect uncommitted git working tree", style="dim")
-    )
-    cmd_table.add_row(
-        Text("  /session", style="bold white"),
-        Text("Manage, list, or resume sessions", style="dim"),
-        Text("  /undo", style="bold white"),
-        Text("Revert last file modification", style="dim")
-    )
-
-    cmd_panel = Panel(
-        cmd_table,
-        title="[bold white]COMMANDS & HOTKEYS[/bold white]",
-        title_align="left",
-        border_style="dim white",
-        padding=(0, 1)
-    )
-    console.print(cmd_panel)
-    console.print()
+    console.print(shortcuts)
+    console.print("[dim]  Tip: Press @ to search and reference project files directly into context.[/dim]\n")
 
 
 def render_step_header(step_idx: int, description: str = ""):
     """Prints start of an execution step."""
     t = Text()
-    t.append(f"┌─ Step {step_idx}", style="bold white")
+    t.append(f"┌ Step {step_idx}", style="bold white")
     if description:
         t.append(f" · {description}", style="dim white")
     console.print(t)
@@ -264,7 +195,7 @@ def render_tool_result(result_text: str, success: bool = True):
 def render_step_footer(status: str = "Completed"):
     """Prints step conclusion line."""
     t = Text()
-    t.append(f"└─ ✓ {status}\n", style="dim white")
+    t.append(f"└ ✓ {status}\n", style="dim white")
     console.print(t)
 
 
@@ -409,7 +340,7 @@ def render_stats_table(stats_data: Dict[str, Any]):
 
 def render_help():
     """Renders slash commands and CLI guidance."""
-    table = Table(title="Quantro 2.0 Commands", border_style="dim white")
+    table = Table(title="Quantro Commands", border_style="dim white")
     table.add_column("Command / Hotkey", style="bold white", width=22)
     table.add_column("Description", style="white")
 
