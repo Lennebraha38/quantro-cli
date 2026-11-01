@@ -114,9 +114,9 @@ quantro auth -p openrouter -k "sk-or-v1-..."
 | `@<file>` | Fuzzy file reference and context injection |
 | `/commit` | Generate conventional commit from git diff and commit |
 | `/review` | Audit git changes with Senior Reviewer agent |
-| `/agent [role]` | Switch agent role (`build`, `plan`, `review`, `test`) |
-| `/model [name]` | Switch LLM model |
-| `/session [list\|new]` | Manage sessions |
+| `/agent` | Open interactive agent role selector (`build`, `plan`, `review`, `test`) |
+| `/model` | Open interactive LLM model & provider selector |
+| `/session` | Open interactive session manager to resume or list sessions |
 | `/init` | Generate repository guide (`QUANTRO.md`) |
 | `/diff` | Inspect git diff or last file edit |
 | `/undo` | Roll back last file modification |
@@ -124,6 +124,15 @@ quantro auth -p openrouter -k "sk-or-v1-..."
 | `/cost` | View session token and cost analytics |
 | `/clear` | Clear terminal screen |
 | `/exit`, `/quit` | Save and exit session |
+
+---
+
+## 🎨 OpenCode 2.0 TUI Design
+
+- **Alternate-Screen Buffer:** Switches terminal to an isolated full-screen buffer (`\033[?1049h`), leaving your regular bash scrollback clean. Restores terminal seamlessly upon `/exit`.
+- **Iconic Block Font Logo:** Centered 3-row Unicode block font matching OpenCode's visual identity.
+- **Interactive Select Dialogs:** Keyboard-navigable (`radiolist_dialog`) dark monochromatic dialogs for selecting roles, models, and sessions.
+- **Conversational Cards & Streaming:** Clean `┌─ You ──` turn cards, real-time SSE streaming with model attribution, step execution timelines, and unified diff viewers.
 
 ---
 
